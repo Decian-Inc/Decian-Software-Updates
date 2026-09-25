@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "algorithm": "RSA-PSS-SHA256",
+  "keyId": "rsa-sha256:d13f158b1043137e566ffdc9fe6c9429",
+  "signatureBase64": "BXVx9B5RUTm\u002B2PEit0acp9OZqLmgC8bIGgSJCFNkl2NmdpN2kMhQgiFQn3IKs\u002BQnAgg2CyODR6JRHusbeQwm0lehqfSZwNB\u002Bpdd18a2/6USCCyugFpmx5G/p5aeZbWRn0mjsxaGnu0l\u002BbbcRlAfMaQBWSC5SwTcV97hohflAlUHcppuGdbxDzehLqF0y\u002BBhqhieWz3mR8OstUvIPxRp/PnoSIFpaoKcAPebM\u002Bkkg1cB1p7cN45lG0fBk0eabKXViP5YmL4SUUUXiutY58Fig43DjPz1Ce6AttKj2N8xSXlwaKrosCdsMj/tuTM30ZVC0fiMHBt3kVfkr\u002Bu4CLzZRxz3Y5JHUprGcPkOgpXfjjMIjCs66Zg0\u002ByeHHS6YQ6Wrk2yO0qjeLqetH2SZbPTqXqD43BvxJHw\u002BXfp6PEXSdo\u002Bxb1A61GvUZ7jybqQbWlAu36doGrqcNdpdWh42qw6NBb9rhXXzY987r5JTSyMmN33xBcK3zdnNc\u002Bfl4WDfEiB2Z"
+}

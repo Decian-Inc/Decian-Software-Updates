@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "productId": "DECIAN-UPDATE-POC",
+  "channel": "rc",
+  "latestVersion": "0.1.0-poc.1",
+  "releasePath": "products/DECIAN-UPDATE-POC/releases/0.1.0-poc.1/release.json",
+  "publishedUtc": "2026-09-25T17:21:48.1006399+00:00"
+}

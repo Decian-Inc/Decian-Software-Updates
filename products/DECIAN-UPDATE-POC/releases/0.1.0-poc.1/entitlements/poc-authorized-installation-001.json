@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "productId": "DECIAN-UPDATE-POC",
+  "releaseVersion": "0.1.0-poc.1",
+  "updateHandle": "poc-authorized-installation-001",
+  "keyWrapAlgorithm": "RSA-OAEP-SHA256",
+  "wrappedReleaseKeyBase64": "vkCqRdv1z0odlSaKXIV/ng52bd27BIbGUnm25u\u002BQhcQlKg6sF1WUxXxAOaGFySBVH0KUIduNOLFEUY68V3hU1QBpJPMfBJkZKBzPl\u002Boi3zUDrplXrBcf0a1GyERmnFgnseja5J38cZNSlHDYSJ/Q8SPduWMa\u002BaU837Nr8RALEuPwxYiL\u002Bas3VnSVNaIYZOrSwH3Wshe1dSl5pFjY/kqOgCNNHO5aVt29QP/k/igEZrLhQqYB\u002BDh3jWBqn\u002BTvwlHma9dvtZEB8QX2r6a3OTD8zLpYJsnq3FUwH5wFygB7Ur5UmkbUyBmWgRKrhki3a5YVsizQW30XFM3NXcSEzw5uEXiFhMeHePJ\u002BVlawvZPyzko2UtaDa765hwXl5DyyHjBlSrO8bNZ0zT4Im0C4GkgfVYHIR2oVacNMgnXuq9G2AqsldWqT4UtyZUxtu4JawFJNgxIexNAMhRBTKx2Qq0ATHDxhZ1wPtWSPJf2/CBCsOM/iga\u002BiUgR4Aq7\u002BEsjoiax1",
+  "signingKeyId": "rsa-sha256:d13f158b1043137e566ffdc9fe6c9429",
+  "issuedUtc": "2026-09-25T17:21:48.1006399+00:00"
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "productId": "DECIAN-UPDATE-POC",
+  "version": "0.1.0-poc.1",
+  "result": "PASS",
+  "signingKeyId": "rsa-sha256:d13f158b1043137e566ffdc9fe6c9429",
+  "updateHandle": "poc-authorized-installation-001",
+  "tests": {
+    "authorizedInstallationDecrypts": true,
+    "wrongInstallationRejected": true,
+    "tamperedPackageRejected": true,
+    "manifestTamperRejected": true,
+    "signingPrivateKeyExportBlocked": true,
+    "installationPrivateKeyExportBlocked": true
+  },
+  "generatedUtc": "2026-09-25T17:21:48.1006399+00:00"
+}

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "productId": "DECIAN-UPDATE-POC",
+  "version": "0.1.0-poc.1",
+  "channel": "rc",
+  "packagePath": "products/DECIAN-UPDATE-POC/releases/0.1.0-poc.1/Decian-Update-POC-0.1.0-poc.1.dupkg",
+  "packageAlgorithm": "AES-256-GCM",
+  "packageSha256": "c6467f17fd576de5f4d3657cce8cf6ecbe21d9f8b9c6ec380171c48dad52e727",
+  "plaintextSha256": "7ff3c2d05b14562a1f21b0661eb6b42b610011c3b221e11ec0d4b6216d4871b0",
+  "packageSize": 130,
+  "associatedData": "DECIAN|UPDATE|1|DECIAN-UPDATE-POC|0.1.0-poc.1|rc",
+  "entitlementBasePath": "products/DECIAN-UPDATE-POC/releases/0.1.0-poc.1/entitlements",
+  "signingKeyId": "rsa-sha256:d13f158b1043137e566ffdc9fe6c9429",
+  "publishedUtc": "2026-09-25T17:21:48.1006399+00:00"
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "catalogId": "DECIAN-SOFTWARE-UPDATES",
+  "products": [
+    {
+      "productId": "DECIAN-UPDATE-POC",
+      "productPath": "products/DECIAN-UPDATE-POC/product.json"
+    }
+  ],
+  "publishedUtc": "2026-09-25T17:21:48.1006399+00:00"
+}

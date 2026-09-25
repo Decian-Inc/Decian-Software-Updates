@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "productId": "DECIAN-UPDATE-POC",
+  "displayName": "Decian Update Protocol v1 POC",
+  "channels": {
+    "rc": "products/DECIAN-UPDATE-POC/channels/rc.json"
+  }
+}
