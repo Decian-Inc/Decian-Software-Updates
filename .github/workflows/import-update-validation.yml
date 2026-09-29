@@ -1,0 +1,37 @@
+name: Import encrypted dev delivery diagnostic
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_base64:
+        description: Public-only bundle from the private preparation checkpoint
+        required: true
+        type: string
+      handle:
+        description: Approved dev update handle
+        required: true
+        type: string
+      confirmation:
+        description: Type IMPORT VALIDATION PACKAGE
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: initial-dev-validation-import
+  cancel-in-progress: false
+jobs:
+  import:
+    if: github.ref == 'refs/heads/main' && github.repository == 'Decian-Inc/Decian-Software-Updates'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Verify signed diagnostic and atomically publish exact files
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          INPUT_HANDLE: ${{ inputs.handle }}
+          INPUT_BUNDLE: ${{ inputs.bundle_base64 }}
+          INPUT_CONFIRMATION: ${{ inputs.confirmation }}
+        run: python3 -I scripts/update_validation_import.py
