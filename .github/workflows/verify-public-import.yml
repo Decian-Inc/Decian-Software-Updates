@@ -15,3 +15,5 @@ jobs:
         with:
           persist-credentials: false
       - run: python3 -m unittest discover -s scripts -p test_update_public_import.py -v
+
+      - run: python3 -m unittest discover -s scripts -p test_update_validation_import.py -v
