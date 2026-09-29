@@ -1,0 +1,17 @@
+name: Verify public grant importer
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths: ['scripts/**', '.github/workflows/**', 'config/update-signing-public-key.pem']
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s scripts -p test_update_public_import.py -v
