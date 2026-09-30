@@ -28,9 +28,6 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.repository == 'Decian-Inc/Decian-Software-Updates'
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 20
-    env:
-      TEMP: ${{ runner.temp }}
-      TMP: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -64,6 +61,8 @@ jobs:
           INPUT_SEQUENCE: ${{ inputs.release_sequence }}
           INPUT_CONFIRMATION: ${{ inputs.confirmation }}
           PYTHONDONTWRITEBYTECODE: '1'
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         run: |
           $ErrorActionPreference='Stop'
           if ($env:INPUT_CONFIRMATION -cne 'PUBLISH REAL DEV UPDATE') { throw 'Explicit publication confirmation required.' }
