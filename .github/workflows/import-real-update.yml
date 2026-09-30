@@ -1,0 +1,72 @@
+name: Import reviewed real dev update
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_base64:
+        description: Signed public-only handoff from merged authority review
+        required: true
+        type: string
+      handle:
+        description: Approved dev update handle
+        required: true
+        type: string
+      release_sequence:
+        description: Exact reviewed dev release sequence
+        required: true
+        type: string
+      confirmation:
+        description: Type PUBLISH REAL DEV UPDATE
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: reviewed-real-dev-release-import
+  cancel-in-progress: false
+jobs:
+  import:
+    if: github.ref == 'refs/heads/main' && github.repository == 'Decian-Inc/Decian-Software-Updates'
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    env:
+      TEMP: ${{ runner.temp }}
+      TMP: ${{ runner.temp }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Locate existing qualified Python and OpenSSL
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $candidates=@(
+            (Get-Command python.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue),
+            'C:\Python313\python.exe',
+            'C:\Program Files\Python313\python.exe',
+            'C:\Decian-Runner-Cache\LCC\Tools\Python-3.13.15-embed-amd64\python.exe'
+          ) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -Unique
+          $selected=$null
+          foreach ($candidate in $candidates) {
+            & $candidate -c "import sys,ssl,json,hashlib; assert sys.version_info[:2]==(3,13)"
+            if ($LASTEXITCODE -eq 0) { $selected=$candidate; break }
+          }
+          if (!$selected) { throw 'Qualified runner Python 3.13 is missing. No package published.' }
+          "RELEASE_PYTHON=$selected" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $openssl=@((Get-Command openssl.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue),"$env:ProgramFiles\Git\usr\bin\openssl.exe","$env:ProgramFiles\Git\mingw64\bin\openssl.exe") | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+          if (!$openssl) { throw 'Runner OpenSSL is missing.' }
+          (Split-Path -Parent $openssl) | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Verify reviewed handoff, publish exact asset, then atomically advance offer
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          INPUT_BUNDLE: ${{ inputs.bundle_base64 }}
+          INPUT_HANDLE: ${{ inputs.handle }}
+          INPUT_SEQUENCE: ${{ inputs.release_sequence }}
+          INPUT_CONFIRMATION: ${{ inputs.confirmation }}
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:INPUT_CONFIRMATION -cne 'PUBLISH REAL DEV UPDATE') { throw 'Explicit publication confirmation required.' }
+          $env:RELEASE_STAGING_ROOT = & .\scripts\Initialize-UpdateReleaseStaging.ps1
+          & $env:RELEASE_PYTHON .\scripts\update_release_import.py
+          if ($LASTEXITCODE -ne 0) { throw 'Real update import stopped. Preserve the original candidate and release; no completion confirmed.' }
