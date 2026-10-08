@@ -19,3 +19,5 @@ jobs:
       - run: python3 -m unittest discover -s scripts -p test_update_validation_import.py -v
 
       - run: python3 -m unittest discover -s scripts -p test_update_release_transport.py -v
+
+      - run: python3 -m unittest discover -s scripts -p test_update_renewal_import.py -v
