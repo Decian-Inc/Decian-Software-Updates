@@ -64,7 +64,7 @@ def verify_transfer(encoded, pin, now, repository=REPOSITORY):
             re.fullmatch(r'rsa-sha256:[a-f0-9]{32}', grant['installationKeyId']) is not None,
             'Invalid opaque grant identifiers')
     start, end = (timestamp(grant[k]) for k in ('notBeforeUtc', 'expiresUtc'))
-    require(start <= now < end <= start + dt.timedelta(days=7), 'Grant is not currently publishable')
+    require(start <= now < end <= start + dt.timedelta(days=365), 'Grant is not currently publishable')
     require(set(signature) == {'schemaVersion', 'algorithm', 'keyId', 'signatureBase64'} and
             type(signature['schemaVersion']) is int and signature['schemaVersion'] == 1 and
             signature['algorithm'] == 'RSA-PSS-SHA256', 'Unsupported signature')
@@ -117,3 +117,4 @@ if __name__ == '__main__':
         main()
     except Exception:
         raise SystemExit('Public import failed; no completion confirmed. Check scope, signature, expiry and repository permissions.') from None
+

@@ -93,7 +93,7 @@ class ImportTests(unittest.TestCase):
         for field, value in [('productId', 'other'), ('sequence', 2), ('sequence', True), ('status', 'revoked'),
                              ('updateHandle', '../outside'), ('channel', 'other'),
                              ('expiresUtc', self.grant['notBeforeUtc']),
-                             ('expiresUtc', (self.now + dt.timedelta(days=8)).isoformat().replace('+00:00', 'Z'))]:
+                             ('expiresUtc', (self.now + dt.timedelta(days=366)).isoformat().replace('+00:00', 'Z'))]:
             with self.subTest(field=field, value=value):
                 self.grant = dict(original, **{field: value})
                 with self.assertRaises(ValueError): self.run_import(self.transfer())
@@ -137,3 +137,4 @@ class ImportTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
