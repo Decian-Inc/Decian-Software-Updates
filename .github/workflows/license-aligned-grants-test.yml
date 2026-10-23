@@ -1,0 +1,16 @@
+name: License-aligned public grant qualification
+on:
+  push:
+    branches: [fix/license-aligned-update-grants]
+  pull_request:
+    paths: ['scripts/**', '.github/workflows/*grant*.yml']
+permissions:
+  contents: read
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s scripts -p 'test_update*.py' -q

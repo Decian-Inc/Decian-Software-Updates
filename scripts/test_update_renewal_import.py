@@ -32,6 +32,29 @@ class RenewalImportTests(unittest.TestCase):
             self.transfer['files']=self.f.transfer(dict(self.new,**{field:value}))['files']
             with self.assertRaises(ValueError):self.run_import()
         self.assertFalse(self.f.repo.writes)
+    def test_annual_grant_and_repeated_renewals(self):
+        for sequence in (2,3,4):
+            new=dict(self.new,sequence=sequence,
+                expiresUtc=(self.f.now+dt.timedelta(days=365)).isoformat().replace('+00:00','Z'))
+            self.transfer['files']=self.f.transfer(new)['files']
+            self.run_import()
+            from update_release_metadata import verify_current_grant
+            pair = {name: base64.b64decode(data) for name, data in self.transfer['files'].items()}
+            self.assertEqual(verify_current_grant(pair['grant.json'], pair['grant.sig.json'],
+                self.f.pin, self.f.now), new)
+            with self.assertRaises(ValueError):
+                verify_current_grant(pair['grant.json'] + b' ', pair['grant.sig.json'], self.f.pin, self.f.now)
+            self.transfer['previous']=self.transfer['files']
+            self.f.now+=dt.timedelta(days=366)
+            self.new=dict(new,notBeforeUtc=self.f.now.isoformat().replace('+00:00','Z'))
+        self.assertEqual(len(self.f.repo.writes),3)
+
+    def test_over_year_and_sequence_skip_rejected(self):
+        for change in ({'expiresUtc':(self.f.now+dt.timedelta(days=366)).isoformat().replace('+00:00','Z')},{'sequence':4}):
+            self.transfer['files']=self.f.transfer(dict(self.new,**change))['files']
+            with self.assertRaises(ValueError):self.run_import()
+        self.assertFalse(self.f.repo.writes)
+
     def test_missing_changed_and_partial_predecessor_rejected(self):
         p=next(p for p in self.f.repo.files if p.startswith('grants/'))
         self.f.repo.files[p]+=b' '
@@ -58,3 +81,4 @@ class RenewalImportTests(unittest.TestCase):
         self.assertFalse(self.f.repo.writes)
 
 if __name__=='__main__':unittest.main()
+

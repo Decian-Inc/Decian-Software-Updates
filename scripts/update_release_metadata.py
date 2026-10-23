@@ -25,18 +25,25 @@ class VerifiedDelivery:
     files: tuple
 
 
+def verify_current_grant(grant_bytes, signature, pin, now):
+    grant = common.read_json(grant_bytes)
+    if type(grant.get('sequence')) is int and grant['sequence'] > 1:
+        from update_renewal_import import verify_pair
+        verify_pair({'grant.json': grant_bytes, 'grant.sig.json': signature}, pin, now)
+    else:
+        transfer = {'schema': 'decian-public-grant-transfer/v1', 'repository': common.REPOSITORY,
+            'files': {'grant.json': base64.b64encode(grant_bytes).decode(),
+                      'grant.sig.json': base64.b64encode(signature).decode()}}
+        common.verify_transfer(base64.b64encode(json.dumps(transfer).encode()).decode(), pin, now)
+    return grant
+
+
 def verify_metadata(files, pin, now, grant_bytes, grant_signature):
     require(isinstance(files, dict) and len(files) == 4 and
             all(isinstance(k, str) and isinstance(v, bytes) and len(v) <= 16384 for k, v in files.items()),
             'Exactly four bounded public metadata files required')
     require(OFFER + '.json' in files and OFFER + '.sig.json' in files, 'Missing signed offer')
-    # Existing verifier enforces the approved initial grant scope, expiry and RSA strength.
-    # Renewal grants remain unsupported until a separately reviewed renewal implementation.
-    transfer = {'schema': 'decian-public-grant-transfer/v1', 'repository': common.REPOSITORY,
-                'files': {'grant.json': base64.b64encode(grant_bytes).decode(),
-                          'grant.sig.json': base64.b64encode(grant_signature).decode()}}
-    common.verify_transfer(base64.b64encode(json.dumps(transfer).encode()).decode(), pin, now)
-    grant = common.read_json(grant_bytes)
+    grant = verify_current_grant(grant_bytes, grant_signature, pin, now)
     require(grant['channel'] == 'dev', 'Real beta rehearsal is dev only')
     offer, key_id = verify_signed(files[OFFER + '.json'], files[OFFER + '.sig.json'], pin)
     require(set(offer) == {'schemaVersion', 'releaseSequence', 'expiresUtc', 'release'} and

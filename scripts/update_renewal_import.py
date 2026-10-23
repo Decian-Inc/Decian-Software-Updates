@@ -1,4 +1,4 @@
-"""Verify a signed first renewal and atomically replace its exact predecessor."""
+"""Verify a signed renewal and atomically replace its exact predecessor."""
 import base64
 import datetime as dt
 import hashlib
@@ -18,14 +18,14 @@ def verify_pair(files, pin, now):
     sig = common.read_json(files['grant.sig.json'])
     require(set(grant) == {'schemaVersion','productId','updateHandle','installationKeyId','channel','sequence','notBeforeUtc','expiresUtc','status'}, 'Invalid renewal grant fields')
     require(type(grant['schemaVersion']) is int and grant['schemaVersion'] == 1 and
-            type(grant['sequence']) is int and grant['sequence'] == 2 and
+            type(grant['sequence']) is int and 2 <= grant['sequence'] <= 2147483647 and
             grant['status'] == 'active' and grant['productId'] == 'secure-access' and
-            grant['channel'] == 'dev', 'Only first Secure Access dev renewal supported')
+            grant['channel'] in ('dev', 'beta', 'stable'), 'Unsupported Secure Access renewal scope')
     import re
     require(re.fullmatch(r'[a-f0-9]{32}',grant['updateHandle']) is not None and
             re.fullmatch(r'rsa-sha256:[a-f0-9]{32}',grant['installationKeyId']) is not None, 'Invalid renewal identity')
     start,end=(common.timestamp(grant[k]) for k in ('notBeforeUtc','expiresUtc'))
-    require(start <= now < end <= start+dt.timedelta(days=7), 'Renewal expired or future')
+    require(start <= now < end <= start+dt.timedelta(days=365), 'Renewal expired or future')
     require(set(sig)=={'schemaVersion','algorithm','keyId','signatureBase64'} and
             type(sig['schemaVersion']) is int and sig['schemaVersion']==1 and sig['algorithm']=='RSA-PSS-SHA256', 'Invalid renewal signature envelope')
     der=common.openssl('pkey','-pubin','-in',pin,'-outform','DER')
@@ -51,10 +51,14 @@ def verify_transfer(encoded,pin,now):
     require(set(previous)=={'grant.json','grant.sig.json'},'Invalid predecessor pair')
     old=common.read_json(previous['grant.json'])
     # Historical signature validation proves provenance only, not current permission.
-    original=base64.b64encode(json.dumps({'schema':'decian-public-grant-transfer/v1','repository':common.REPOSITORY,
-        'files':transfer['previous']}).encode()).decode()
-    common.verify_transfer(original,pin,common.timestamp(old['notBeforeUtc']))
+    if old['sequence'] == 1:
+        original=base64.b64encode(json.dumps({'schema':'decian-public-grant-transfer/v1','repository':common.REPOSITORY,
+            'files':transfer['previous']}).encode()).decode()
+        common.verify_transfer(original,pin,common.timestamp(old['notBeforeUtc']))
+    else:
+        verify_pair(previous,pin,common.timestamp(old['notBeforeUtc']))
     new=verify_pair(files,pin,now)
+    require(new['sequence'] == old['sequence'] + 1, 'Renewal must advance exactly one sequence')
     require(all(new[k]==old[k] for k in ('productId','channel','updateHandle','installationKeyId')) and
             common.timestamp(new['notBeforeUtc'])>=common.timestamp(old['notBeforeUtc']) and
             common.timestamp(new['expiresUtc'])>common.timestamp(old['expiresUtc']), 'Renewal identity or validity differs')
@@ -88,3 +92,4 @@ def main():
 if __name__=='__main__':
     try: main()
     except Exception: raise SystemExit('Renewal import held; verify exact predecessor, signature and expiry.') from None
+
