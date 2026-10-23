@@ -38,6 +38,12 @@ class RenewalImportTests(unittest.TestCase):
                 expiresUtc=(self.f.now+dt.timedelta(days=365)).isoformat().replace('+00:00','Z'))
             self.transfer['files']=self.f.transfer(new)['files']
             self.run_import()
+            from update_release_metadata import verify_current_grant
+            pair = {name: base64.b64decode(data) for name, data in self.transfer['files'].items()}
+            self.assertEqual(verify_current_grant(pair['grant.json'], pair['grant.sig.json'],
+                self.f.pin, self.f.now), new)
+            with self.assertRaises(ValueError):
+                verify_current_grant(pair['grant.json'] + b' ', pair['grant.sig.json'], self.f.pin, self.f.now)
             self.transfer['previous']=self.transfer['files']
             self.f.now+=dt.timedelta(days=366)
             self.new=dict(new,notBeforeUtc=self.f.now.isoformat().replace('+00:00','Z'))
