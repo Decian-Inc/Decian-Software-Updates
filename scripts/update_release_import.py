@@ -10,10 +10,12 @@ from update_release_plan import plan, apply_plan
 from update_release_upload import ensure_asset
 from update_release_metadata import verify_ciphertext
 from update_repository import require
-from update_public_import import REPOSITORY
+from update_public_import import INVESTIGATOR, REPOSITORY, SECURE_ACCESS
+import update_release_policy as policy
 
 
-def publish(public, assets, encoded, pin, handle, ciphertext, clock=None, expected_sequence=None):
+def publish(public, assets, encoded, pin, handle, ciphertext, clock=None, expected_sequence=None,
+            product=SECURE_ACCESS):
     require(public.name == REPOSITORY and re.fullmatch(r'[a-f0-9]{32}', handle) is not None, 'Invalid public import scope')
     if clock is None: clock = lambda: dt.datetime.now(dt.timezone.utc)
     def current():
@@ -22,11 +24,11 @@ def publish(public, assets, encoded, pin, handle, ciphertext, clock=None, expect
         grant = public.read(snapshot, 'grants/' + handle + '.json')
         signature = public.read(snapshot, 'grants/' + handle + '.sig.json')
         require(grant is not None and signature is not None, 'Current signed grant required')
-        payload, delivery = verify(encoded, pin, clock(), grant, signature)
+        payload, delivery = verify(encoded, pin, clock(), grant, signature, product)
         require(delivery.handle == handle, 'Import handle differs')
         require(expected_sequence is None or delivery.sequence == expected_sequence, 'Import sequence differs')
         planned = plan(public, dict(delivery.files), pin, clock(), handle, payload['public_head'],
-                       payload['previous_offer_sha256'], payload['previous_signature_sha256'])
+                       payload['previous_offer_sha256'], payload['previous_signature_sha256'], product)
         require(public.snapshot()['sha'] == snapshot['sha'], 'Distribution changed during import checks')
         return payload, delivery, planned
     payload, delivery, planned = current()
@@ -47,13 +49,16 @@ def main():
             os.environ.get('GITHUB_REF') == 'refs/heads/main' and
             os.environ.get('INPUT_CONFIRMATION') == 'PUBLISH REAL DEV UPDATE', 'Reviewed public main and confirmation required')
     sequence=os.environ.get('INPUT_SEQUENCE','')
-    require(re.fullmatch(r'[1-9][0-9]{0,18}',sequence) is not None and 2 <= int(sequence) <= 9223372036854775807,'Invalid sequence')
+    product=os.environ.get('INPUT_PRODUCT', SECURE_ACCESS)
+    require(re.fullmatch(r'[1-9][0-9]{0,18}',sequence) is not None and policy.sequence_valid(product, int(sequence)),
+            'Invalid reviewed product and sequence')
     public=GitHubRepository(REPOSITORY,os.environ.get('GITHUB_TOKEN'),False)
     require(public.snapshot()['sha']==os.environ.get('GITHUB_SHA'),'Public main changed since checkout')
     pin=pathlib.Path(__file__).resolve().parents[1]/'config/update-signing-public-key.pem'
-    ciphertext=pathlib.Path(os.environ['RELEASE_STAGING_ROOT'])/f'dev-{sequence}'/'package.dcu'
+    slot = f'{product}-dev-{sequence}' if product == INVESTIGATOR else f'dev-{sequence}'
+    ciphertext=pathlib.Path(os.environ['RELEASE_STAGING_ROOT'])/slot/'package.dcu'
     print(json.dumps(publish(public,GitHubAssets(os.environ.get('GITHUB_TOKEN')),os.environ.get('INPUT_BUNDLE',''),
-        pin,os.environ.get('INPUT_HANDLE',''),ciphertext,expected_sequence=int(sequence)),sort_keys=True))
+        pin,os.environ.get('INPUT_HANDLE',''),ciphertext,expected_sequence=int(sequence),product=product),sort_keys=True))
 
 
 if __name__=='__main__':

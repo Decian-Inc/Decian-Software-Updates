@@ -12,20 +12,21 @@ import update_public_import as common
 from update_repository import GitHubRepository, reconcile, require
 
 
-def verify_pair(files, pin, now):
+def verify_pair(files, pin, now, product=common.SECURE_ACCESS):
     require(set(files) == {'grant.json','grant.sig.json'}, 'Only public pair permitted')
     grant = common.read_json(files['grant.json'])
     sig = common.read_json(files['grant.sig.json'])
     require(set(grant) == {'schemaVersion','productId','updateHandle','installationKeyId','channel','sequence','notBeforeUtc','expiresUtc','status'}, 'Invalid renewal grant fields')
     require(type(grant['schemaVersion']) is int and grant['schemaVersion'] == 1 and
             type(grant['sequence']) is int and 2 <= grant['sequence'] <= 2147483647 and
-            grant['status'] == 'active' and grant['productId'] == 'secure-access' and
-            grant['channel'] in ('dev', 'beta', 'stable'), 'Unsupported Secure Access renewal scope')
+            grant['status'] == 'active' and product in common.GRANT_CHANNELS and grant['productId'] == product and
+            grant['channel'] in common.GRANT_CHANNELS[product], 'Unsupported renewal scope')
     import re
     require(re.fullmatch(r'[a-f0-9]{32}',grant['updateHandle']) is not None and
             re.fullmatch(r'rsa-sha256:[a-f0-9]{32}',grant['installationKeyId']) is not None, 'Invalid renewal identity')
     start,end=(common.timestamp(grant[k]) for k in ('notBeforeUtc','expiresUtc'))
-    require(start <= now < end <= start+dt.timedelta(days=365), 'Renewal expired or future')
+    max_days = 7 if product == common.INVESTIGATOR else 365
+    require(start <= now < end <= start + dt.timedelta(days=max_days), 'Renewal expired or future')
     require(set(sig)=={'schemaVersion','algorithm','keyId','signatureBase64'} and
             type(sig['schemaVersion']) is int and sig['schemaVersion']==1 and sig['algorithm']=='RSA-PSS-SHA256', 'Invalid renewal signature envelope')
     der=common.openssl('pkey','-pubin','-in',pin,'-outform','DER')
@@ -41,7 +42,7 @@ def verify_pair(files, pin, now):
     return grant
 
 
-def verify_transfer(encoded,pin,now):
+def verify_transfer(encoded,pin,now,product=common.SECURE_ACCESS):
     require(isinstance(encoded,str) and len(encoded)<=24000,'Renewal transfer exceeds limit')
     transfer=common.read_json(base64.b64decode(encoded,validate=True))
     require(set(transfer)=={'schema','repository','previous','files'} and
@@ -54,10 +55,10 @@ def verify_transfer(encoded,pin,now):
     if old['sequence'] == 1:
         original=base64.b64encode(json.dumps({'schema':'decian-public-grant-transfer/v1','repository':common.REPOSITORY,
             'files':transfer['previous']}).encode()).decode()
-        common.verify_transfer(original,pin,common.timestamp(old['notBeforeUtc']))
+        common.verify_transfer(original,pin,common.timestamp(old['notBeforeUtc']),product=product)
     else:
-        verify_pair(previous,pin,common.timestamp(old['notBeforeUtc']))
-    new=verify_pair(files,pin,now)
+        verify_pair(previous,pin,common.timestamp(old['notBeforeUtc']),product)
+    new=verify_pair(files,pin,now,product)
     require(new['sequence'] == old['sequence'] + 1, 'Renewal must advance exactly one sequence')
     require(all(new[k]==old[k] for k in ('productId','channel','updateHandle','installationKeyId')) and
             common.timestamp(new['notBeforeUtc'])>=common.timestamp(old['notBeforeUtc']) and
@@ -65,9 +66,9 @@ def verify_transfer(encoded,pin,now):
     return previous,files,new
 
 
-def import_transfer(repository,encoded,pin,now,expected_commit=None):
+def import_transfer(repository,encoded,pin,now,expected_commit=None,product=common.SECURE_ACCESS):
     require(repository.name==common.REPOSITORY,'Unexpected distribution repository')
-    previous,files,grant=verify_transfer(encoded,pin,now)
+    previous,files,grant=verify_transfer(encoded,pin,now,product)
     snapshot=repository.snapshot()
     if expected_commit is not None: require(snapshot['sha']==expected_commit,'Distribution main changed since checkout')
     require(repository.read(snapshot,'config/update-signing-public-key.pem')==pin.read_bytes(),'Public pin differs')
@@ -87,9 +88,9 @@ def main():
     require(os.environ.get('INPUT_CONFIRMATION')=='IMPORT SAME-KEY GRANT RENEWAL','Explicit renewal import required')
     pin=pathlib.Path(__file__).resolve().parents[1]/'config/update-signing-public-key.pem'
     print(json.dumps(import_transfer(GitHubRepository(common.REPOSITORY,os.environ.get('GITHUB_TOKEN'),False),
-        os.environ.get('INPUT_BUNDLE',''),pin,dt.datetime.now(dt.timezone.utc),os.environ.get('GITHUB_SHA','')),sort_keys=True))
+        os.environ.get('INPUT_BUNDLE',''),pin,dt.datetime.now(dt.timezone.utc),os.environ.get('GITHUB_SHA',''),
+        os.environ.get('INPUT_PRODUCT',common.SECURE_ACCESS)),sort_keys=True))
 
 if __name__=='__main__':
     try: main()
     except Exception: raise SystemExit('Renewal import held; verify exact predecessor, signature and expiry.') from None
-

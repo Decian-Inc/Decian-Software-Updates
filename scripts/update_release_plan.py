@@ -4,7 +4,8 @@ import hashlib
 import re
 import update_public_import as common
 from update_validation_import import verify_signed
-from update_release_metadata import OFFER, verify_metadata
+from update_release_metadata import verify_metadata
+import update_release_policy as policy
 from update_repository import require, reconcile
 
 
@@ -13,52 +14,59 @@ class PublicationPlan:
     base_sha: str
     files: tuple
     already_published: bool
+    product: str
 
 
-def plan(repository, files, pin, now, handle, expected_head, previous_offer_sha256, previous_signature_sha256):
+def plan(repository, files, pin, now, handle, expected_head, previous_offer_sha256, previous_signature_sha256,
+         product=common.SECURE_ACCESS):
     require(repository.name == common.REPOSITORY, 'Wrong distribution repository')
     require(isinstance(handle, str) and re.fullmatch(r'[a-f0-9]{32}', handle) is not None, 'Invalid handle')
-    for value in (previous_offer_sha256, previous_signature_sha256):
-        require(isinstance(value, str) and re.fullmatch(r'[a-f0-9]{64}', value) is not None, 'Invalid predecessor digest')
     snapshot = repository.snapshot()
     require(repository.read(snapshot, 'config/update-signing-public-key.pem') == pin.read_bytes(), 'Distribution trust pin changed')
     grant = repository.read(snapshot, 'grants/' + handle + '.json')
     signature = repository.read(snapshot, 'grants/' + handle + '.sig.json')
     require(grant is not None and signature is not None, 'Current public grant required')
-    delivery = verify_metadata(files, pin, now, grant, signature)
+    delivery = verify_metadata(files, pin, now, grant, signature, product)
+    policy.check_predecessor(product, delivery.sequence, previous_offer_sha256, previous_signature_sha256)
     require(delivery.handle == handle, 'Grant recipient differs')
+
     writes = dict(delivery.files)
-    offer_path = f'products/secure-access/releases/dev/{delivery.sequence}/0.4.19/offer'
-    writes[offer_path + '.json'] = writes[OFFER + '.json']
-    writes[offer_path + '.sig.json'] = writes[OFFER + '.sig.json']
+    active_offer = policy.offer_path(product)
+    archive_offer = policy.release_prefix(product, delivery.sequence, delivery.version) + '/offer'
+    writes[archive_offer + '.json'] = writes[active_offer + '.json']
+    writes[archive_offer + '.sig.json'] = writes[active_offer + '.sig.json']
     actual = {path: repository.read(snapshot, path) for path in writes}
     if all(actual[path] == data for path, data in writes.items()):
-        return PublicationPlan(snapshot['sha'], tuple(sorted(writes.items())), True)
+        return PublicationPlan(snapshot['sha'], tuple(sorted(writes.items())), True, product)
+
     require(snapshot['sha'] == expected_head, 'Distribution changed after review')
     for path in writes:
-        if path not in (OFFER + '.json', OFFER + '.sig.json'):
+        if path not in (active_offer + '.json', active_offer + '.sig.json'):
             require(actual[path] is None, 'Existing or partial immutable release evidence; do not overwrite')
-    previous, previous_signature = actual[OFFER + '.json'], actual[OFFER + '.sig.json']
-    require(previous is not None and previous_signature is not None and
-            hashlib.sha256(previous).hexdigest() == previous_offer_sha256 and
-            hashlib.sha256(previous_signature).hexdigest() == previous_signature_sha256,
-            'Reviewed predecessor offer/signature changed')
-    old, _ = verify_signed(previous, previous_signature, pin)
-    require(set(old) == {'schemaVersion', 'releaseSequence', 'expiresUtc', 'release'} and
-            type(old['schemaVersion']) is int and old['schemaVersion'] == 1 and
-            type(old['releaseSequence']) is int and 1 <= old['releaseSequence'] < 9223372036854775807 and
-            delivery.sequence == old['releaseSequence'] + 1 and isinstance(old['release'], dict) and
-            old['release'].get('productId') == 'secure-access' and old['release'].get('channel') == 'dev',
-            'Release must immediately follow the signed dev predecessor')
-    # Expired predecessor offers may be replaced; the new grant and offer must be current.
-    return PublicationPlan(snapshot['sha'], tuple(sorted(writes.items())), False)
+
+    previous, previous_signature = actual[active_offer + '.json'], actual[active_offer + '.sig.json']
+    if policy.first_investigator_offer(product, delivery.sequence):
+        require(previous is None and previous_signature is None, 'First 365II dev offer already exists or is partial')
+    else:
+        require(previous is not None and previous_signature is not None and
+                hashlib.sha256(previous).hexdigest() == previous_offer_sha256 and
+                hashlib.sha256(previous_signature).hexdigest() == previous_signature_sha256,
+                'Reviewed predecessor offer/signature changed')
+        old, _ = verify_signed(previous, previous_signature, pin)
+        require(set(old) == {'schemaVersion', 'releaseSequence', 'expiresUtc', 'release'} and
+                type(old['schemaVersion']) is int and old['schemaVersion'] == 1 and
+                type(old['releaseSequence']) is int and 1 <= old['releaseSequence'] < policy.MAX_SEQUENCE and
+                delivery.sequence == old['releaseSequence'] + 1 and isinstance(old['release'], dict) and
+                old['release'].get('productId') == product and old['release'].get('channel') == 'dev',
+                'Release must immediately follow the signed dev predecessor')
+        if product == common.INVESTIGATOR:
+            require(policy.version_tuple(delivery.version) > policy.version_tuple(old['release'].get('version')),
+                    '365II offer must advance the signed Setup version')
+    return PublicationPlan(snapshot['sha'], tuple(sorted(writes.items())), False, product)
 
 
 def apply_plan(repository, publication_plan):
-    """Low-level CAS write; caller must separately verify reviewed authority and remote asset.
-
-    Deliberately no production workflow calls this function yet.
-    """
+    """Commit a previously verified plan at the exact reviewed public head."""
     require(repository.name == common.REPOSITORY, 'Wrong distribution repository')
     snapshot = repository.snapshot()
     require(snapshot['sha'] == publication_plan.base_sha, 'Distribution changed after planning')
@@ -66,4 +74,5 @@ def apply_plan(repository, publication_plan):
     if publication_plan.already_published:
         require(all(repository.read(snapshot, p) == data for p, data in files.items()), 'Published evidence changed')
         return snapshot
-    return reconcile(repository, snapshot, files, 'Publish reviewed encrypted Secure Access dev release')
+    product_name = '365II' if publication_plan.product == common.INVESTIGATOR else 'Secure Access'
+    return reconcile(repository, snapshot, files, f'Publish reviewed encrypted {product_name} dev release')

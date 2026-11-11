@@ -16,6 +16,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from update_repository import GitHubRepository, reconcile, require
 
 REPOSITORY = 'Decian-Inc/Decian-Software-Updates'
+SECURE_ACCESS = 'secure-access'
+INVESTIGATOR = 'm365-incident-investigator'
+GRANT_CHANNELS = {SECURE_ACCESS: ('dev', 'beta', 'stable'), INVESTIGATOR: ('dev',)}
 
 
 def unique(pairs):
@@ -44,7 +47,7 @@ def timestamp(value):
     return dt.datetime.fromisoformat(value[:-1] + '+00:00')
 
 
-def verify_transfer(encoded, pin, now, repository=REPOSITORY):
+def verify_transfer(encoded, pin, now, repository=REPOSITORY, product=SECURE_ACCESS):
     require(isinstance(encoded, str) and len(encoded) <= 24000, 'Transfer exceeds size limit')
     transfer = read_json(base64.b64decode(encoded, validate=True))
     require(set(transfer) == {'schema', 'repository', 'files'} and
@@ -58,13 +61,14 @@ def verify_transfer(encoded, pin, now, repository=REPOSITORY):
             'channel', 'sequence', 'notBeforeUtc', 'expiresUtc', 'status'}, 'Unexpected grant fields')
     require(type(grant['schemaVersion']) is int and grant['schemaVersion'] == 1 and
             type(grant['sequence']) is int and grant['sequence'] == 1 and
-            grant['status'] == 'active' and grant['productId'] == 'secure-access' and
-            grant['channel'] in ('dev', 'beta', 'stable'), 'Unsupported initial grant scope')
+            grant['status'] == 'active' and product in GRANT_CHANNELS and grant['productId'] == product and
+            grant['channel'] in GRANT_CHANNELS[product], 'Unsupported initial grant scope')
     require(re.fullmatch(r'[a-f0-9]{32}', grant['updateHandle']) is not None and
             re.fullmatch(r'rsa-sha256:[a-f0-9]{32}', grant['installationKeyId']) is not None,
             'Invalid opaque grant identifiers')
     start, end = (timestamp(grant[k]) for k in ('notBeforeUtc', 'expiresUtc'))
-    require(start <= now < end <= start + dt.timedelta(days=365), 'Grant is not currently publishable')
+    max_days = 7 if product == INVESTIGATOR else 365
+    require(start <= now < end <= start + dt.timedelta(days=max_days), 'Grant is not currently publishable')
     require(set(signature) == {'schemaVersion', 'algorithm', 'keyId', 'signatureBase64'} and
             type(signature['schemaVersion']) is int and signature['schemaVersion'] == 1 and
             signature['algorithm'] == 'RSA-PSS-SHA256', 'Unsupported signature')
@@ -84,8 +88,9 @@ def verify_transfer(encoded, pin, now, repository=REPOSITORY):
     return {prefix + '.json': files['grant.json'], prefix + '.sig.json': files['grant.sig.json']}
 
 
-def import_transfer(repository, encoded, pin, now, expected_commit=None):
-    files = verify_transfer(encoded, pin, now, repository.name)
+def import_transfer(repository, encoded, pin, now, expected_commit=None, product=SECURE_ACCESS):
+    require(repository.name == REPOSITORY, 'Unexpected distribution repository')
+    files = verify_transfer(encoded, pin, now, repository.name, product)
     snapshot = repository.snapshot()
     if expected_commit is not None:
         require(snapshot['sha'] == expected_commit, 'Workflow checkout is no longer current main')
@@ -108,7 +113,7 @@ def main():
     pin = pathlib.Path(__file__).resolve().parents[1] / 'config/update-signing-public-key.pem'
     result = import_transfer(GitHubRepository(REPOSITORY, os.environ.get('GITHUB_TOKEN'), False),
                              os.environ.get('INPUT_BUNDLE', ''), pin, dt.datetime.now(dt.timezone.utc),
-                             os.environ.get('GITHUB_SHA', ''))
+                             os.environ.get('GITHUB_SHA', ''), os.environ.get('INPUT_PRODUCT', SECURE_ACCESS))
     print(json.dumps(result, sort_keys=True))
 
 
@@ -117,4 +122,3 @@ if __name__ == '__main__':
         main()
     except Exception:
         raise SystemExit('Public import failed; no completion confirmed. Check scope, signature, expiry and repository permissions.') from None
-
