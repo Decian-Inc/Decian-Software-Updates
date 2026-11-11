@@ -36,12 +36,13 @@ class MemoryAssets:
     def upload(self, release_id, path, size, name):
         self.package = path.read_bytes()
         self.release['assets'] = [{'id': 2, 'name': name, 'size': size, 'state': 'uploaded',
-                                   'browser_download_url': self.url, 'digest': 'sha256:' + digest(self.package)}]
+                                   'browser_download_url': self.url.replace('m365-incident-investigator-dev-1', 'untagged-123'), 'digest': 'sha256:' + digest(self.package)}]
 
     def publish(self, release_id):
         self.release['draft'] = False
+        self.release['assets'][0]['browser_download_url'] = self.url
 
-    def check_tag(self, tag, commit):
+    def check_tag(self, tag, commit, allow_missing=False):
         assert (tag, commit) == (self.release['tag_name'], self.release['target_commitish'])
 
     def download(self, asset_id, path, size, public_url=None):
@@ -165,6 +166,19 @@ class InvestigatorReleaseTests(unittest.TestCase):
         self.assertEqual(len(self.repo.writes[0]), 6)
         self.assertEqual(self.repo.files[other], b'preserve Secure Access')
         self.assertEqual(assets.release['tag_name'], self.product + '-dev-1')
+
+    def test_final_asset_url_must_match_after_draft_publication(self):
+        handoff = self.handoff(self.offer(1, '0.8.4'), 1)
+
+        class WrongFinalUrlAssets(MemoryAssets):
+            def publish(self, release_id):
+                self.release['draft'] = False
+
+        assets = WrongFinalUrlAssets(policy.package_url(self.product, 1, '0.8.4.dcu'))
+        with self.assertRaises(ValueError):
+            self.publish(handoff, assets)
+        self.assertEqual(assets.downloads, [None])
+        self.assertFalse(self.repo.writes)
 
     def test_initial_offer_refuses_partial_or_fabricated_predecessor_and_stale_head(self):
         files = self.offer(1, '0.8.4')
