@@ -19,3 +19,15 @@ Choose `m365-incident-investigator` for initial grant import, same-key renewal, 
 For a 365II release, place only `package.dcu` under `m365-incident-investigator-dev-N` in the protected staging directory. The authority handoff signs the raw Setup digest, ciphertext digest and size, recipient, version, and reviewed public head. The encrypted asset is at most 256 MiB. The asset tag is `m365-incident-investigator-dev-N` and the asset name is `<version>.dcu`. The version is the three-component numeric version embedded in signed Setup.
 
 The first 365II offer is sequence 1 and requires a handoff with both predecessor digests set to JSON null and both live offer files absent. Later offers require exact predecessor digests, the next sequence, and a higher numeric Setup version. Asset upload and anonymous readback are verified before the signed offer and envelope are committed. After uploading, the importer checks the current grant, expiry and reviewed public head again. Secure Access keeps its existing staging path, reviewed source pin, and release namespace.
+
+### Local 365II import when no distribution runner is registered
+
+Use a clean checkout of current, reviewed Decian Software Updates main and the existing authorized GitHub CLI login. Download the signed 365II handoff artifact from the matching private License Control handoff run into a fresh local directory outside the checkout. The artifact name is `365ii-update-handoff-<run_id>-<run_attempt>`. It contains only `handoff.txt` and `package.dcu`. Leave the runner's original staging directory and its access settings in place.
+
+Run the local importer with Python 3.13 and OpenSSL available on PATH:
+
+```powershell
+python -IB scripts/update_release_local_365ii.py --artifact-directory $handoffDirectory --handle $approvedHandle --sequence $sequence --confirmation 'PUBLISH REAL DEV UPDATE'
+```
+
+The importer requires the same signed handoff, grant, reviewed public head and encrypted bytes as the workflow. The local checkout must match current distribution main. Read the output for the public commit and verified asset. For an exact retry after main advances, update the clean checkout and use the same artifact. The authority completion workflow independently verifies the publication.
