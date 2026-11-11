@@ -2,6 +2,14 @@ name: Import signed initial update grant
 on:
   workflow_dispatch:
     inputs:
+      product_id:
+        description: Product whose signed release or grant is being imported
+        type: choice
+        required: true
+        default: secure-access
+        options:
+          - secure-access
+          - m365-incident-investigator
       bundle_base64:
         description: Public-only bundle from the private preparation checkpoint
         required: true
@@ -27,6 +35,7 @@ jobs:
       - name: Verify public signature and atomically import exact pair
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          INPUT_PRODUCT: ${{ inputs.product_id }}
           INPUT_BUNDLE: ${{ inputs.bundle_base64 }}
           INPUT_CONFIRMATION: ${{ inputs.confirmation }}
         run: python3 -I scripts/update_public_import.py

@@ -9,13 +9,14 @@ from dataclasses import dataclass
 import update_public_import as common
 from update_validation_import import verify_signed
 from update_release_source import REVIEWED
+import update_release_policy as policy
 from update_repository import require
-
-OFFER = 'products/secure-access/channels/dev/offer'
 
 
 @dataclass(frozen=True)
 class VerifiedDelivery:
+    product: str
+    version: str
     sequence: int
     handle: str
     package_sha256: str
@@ -24,54 +25,71 @@ class VerifiedDelivery:
     # Immutable bytes, not caller-owned dictionaries, preserve verified content.
     files: tuple
 
+    @property
+    def asset_name(self):
+        return f'{self.version}.dcu'
 
-def verify_current_grant(grant_bytes, signature, pin, now):
+
+def verify_current_grant(grant_bytes, signature, pin, now, product=common.SECURE_ACCESS):
     grant = common.read_json(grant_bytes)
     if type(grant.get('sequence')) is int and grant['sequence'] > 1:
         from update_renewal_import import verify_pair
-        verify_pair({'grant.json': grant_bytes, 'grant.sig.json': signature}, pin, now)
+        verify_pair({'grant.json': grant_bytes, 'grant.sig.json': signature}, pin, now, product)
     else:
         transfer = {'schema': 'decian-public-grant-transfer/v1', 'repository': common.REPOSITORY,
             'files': {'grant.json': base64.b64encode(grant_bytes).decode(),
                       'grant.sig.json': base64.b64encode(signature).decode()}}
-        common.verify_transfer(base64.b64encode(json.dumps(transfer).encode()).decode(), pin, now)
+        common.verify_transfer(base64.b64encode(json.dumps(transfer).encode()).decode(), pin, now, product=product)
     return grant
 
 
-def verify_metadata(files, pin, now, grant_bytes, grant_signature):
+def verify_metadata(files, pin, now, grant_bytes, grant_signature, product=common.SECURE_ACCESS):
     require(isinstance(files, dict) and len(files) == 4 and
             all(isinstance(k, str) and isinstance(v, bytes) and len(v) <= 16384 for k, v in files.items()),
             'Exactly four bounded public metadata files required')
-    require(OFFER + '.json' in files and OFFER + '.sig.json' in files, 'Missing signed offer')
-    grant = verify_current_grant(grant_bytes, grant_signature, pin, now)
-    require(grant['channel'] == 'dev', 'Real beta rehearsal is dev only')
-    offer, key_id = verify_signed(files[OFFER + '.json'], files[OFFER + '.sig.json'], pin)
+    offer_path = policy.offer_path(product)
+    require(offer_path + '.json' in files and offer_path + '.sig.json' in files, 'Missing signed offer')
+    grant = verify_current_grant(grant_bytes, grant_signature, pin, now, product)
+    require(grant['channel'] == 'dev', 'Reviewed release publication is dev only')
+    offer, key_id = verify_signed(files[offer_path + '.json'], files[offer_path + '.sig.json'], pin)
     require(set(offer) == {'schemaVersion', 'releaseSequence', 'expiresUtc', 'release'} and
             type(offer['schemaVersion']) is int and offer['schemaVersion'] == 1 and
-            type(offer['releaseSequence']) is int and 2 <= offer['releaseSequence'] <= 9223372036854775807,
+            policy.sequence_valid(product, offer['releaseSequence']),
             'Invalid real-release offer')
     sequence = offer['releaseSequence']
-    prefix = f'products/secure-access/releases/dev/{sequence}/{REVIEWED.version}'
-    envelope_path = prefix + '/envelopes/' + grant['updateHandle']
-    require(set(files) == {OFFER + '.json', OFFER + '.sig.json', envelope_path + '.json', envelope_path + '.sig.json'},
-            'Unexpected metadata paths')
     release = offer['release']
-    expected = {'schemaVersion': 1, 'productId': 'secure-access', 'version': REVIEWED.version, 'channel': 'dev',
-        'packagePath': f'https://github.com/{common.REPOSITORY}/releases/download/secure-access-dev-{sequence}/{REVIEWED.version}.dcu',
-        'packageAlgorithm': 'AES-256-GCM', 'plaintextSha256': REVIEWED.bundle_sha256,
-        'packageSize': REVIEWED.bundle_size + 36,
-        'associatedData': f'DECIAN|UPDATE|1|secure-access|{REVIEWED.version}|dev',
+    require(isinstance(release, dict), 'Invalid release record')
+    if product == common.SECURE_ACCESS:
+        version = REVIEWED.version
+        plaintext_sha256 = REVIEWED.bundle_sha256
+        package_size = REVIEWED.bundle_size + policy.PACKAGE_HEADER_SIZE
+    else:
+        # The signed authority handoff binds the reviewed raw Setup digest and size.
+        version = release.get('version')
+        policy.version_tuple(version)
+        plaintext_sha256, package_size = release.get('plaintextSha256'), release.get('packageSize')
+        require(isinstance(plaintext_sha256, str) and re.fullmatch(r'[a-f0-9]{64}', plaintext_sha256) is not None and
+                type(package_size) is int and policy.PACKAGE_HEADER_SIZE < package_size <= policy.INVESTIGATOR_MAX_PACKAGE_SIZE,
+                'Invalid signed 365II Setup identity')
+    prefix = policy.release_prefix(product, sequence, version)
+    envelope_path = prefix + '/envelopes/' + grant['updateHandle']
+    require(set(files) == {offer_path + '.json', offer_path + '.sig.json', envelope_path + '.json', envelope_path + '.sig.json'},
+            'Unexpected metadata paths')
+    expected = {'schemaVersion': 1, 'productId': product, 'version': version, 'channel': 'dev',
+        'packagePath': policy.package_url(product, sequence, f'{version}.dcu'),
+        'packageAlgorithm': 'AES-256-GCM', 'plaintextSha256': plaintext_sha256, 'packageSize': package_size,
+        'associatedData': f'DECIAN|UPDATE|1|{product}|{version}|dev',
         'entitlementBasePath': prefix + '/envelopes', 'signingKeyId': key_id}
-    require(isinstance(release, dict) and set(release) == set(expected) | {'packageSha256', 'publishedUtc'} and
+    require(set(release) == set(expected) | {'packageSha256', 'publishedUtc'} and
             all(release[k] == v for k, v in expected.items()) and type(release['schemaVersion']) is int and
             type(release['packageSize']) is int and isinstance(release['packageSha256'], str) and
             re.fullmatch(r'[a-f0-9]{64}', release['packageSha256']) is not None,
-            'Release does not bind the reviewed whole bundle')
+            'Release does not bind the reviewed payload')
     start, end = common.timestamp(release['publishedUtc']), common.timestamp(offer['expiresUtc'])
     require(start <= now + dt.timedelta(minutes=5) and start < end and now < end <= start + dt.timedelta(days=7)
             and end <= common.timestamp(grant['expiresUtc']), 'Release expired or outside current grant')
     envelope, _ = verify_signed(files[envelope_path + '.json'], files[envelope_path + '.sig.json'], pin)
-    expected_envelope = {'schemaVersion': 1, 'productId': 'secure-access', 'releaseVersion': REVIEWED.version,
+    expected_envelope = {'schemaVersion': 1, 'productId': product, 'releaseVersion': version,
         'updateHandle': grant['updateHandle'], 'keyWrapAlgorithm': 'RSA-OAEP-SHA256', 'signingKeyId': key_id}
     require(set(envelope) == set(expected_envelope) | {'wrappedReleaseKeyBase64', 'issuedUtc'} and
             all(envelope[k] == v for k, v in expected_envelope.items()) and type(envelope['schemaVersion']) is int,
@@ -79,7 +97,7 @@ def verify_metadata(files, pin, now, grant_bytes, grant_signature):
     require(start <= common.timestamp(envelope['issuedUtc']) <= now + dt.timedelta(minutes=5) and
             len(base64.b64decode(envelope['wrappedReleaseKeyBase64'], validate=True)) in (384, 512, 768, 1024),
             'Invalid wrapped release key')
-    return VerifiedDelivery(sequence, grant['updateHandle'], release['packageSha256'], release['packageSize'],
+    return VerifiedDelivery(product, version, sequence, grant['updateHandle'], release['packageSha256'], release['packageSize'],
                             release['packagePath'], tuple(sorted(files.items())))
 
 

@@ -2,6 +2,14 @@ name: Import reviewed real dev update
 on:
   workflow_dispatch:
     inputs:
+      product_id:
+        description: Product whose signed release or grant is being imported
+        type: choice
+        required: true
+        default: secure-access
+        options:
+          - secure-access
+          - m365-incident-investigator
       bundle_base64:
         description: Signed public-only handoff from merged authority review
         required: true
@@ -56,6 +64,7 @@ jobs:
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          INPUT_PRODUCT: ${{ inputs.product_id }}
           INPUT_BUNDLE: ${{ inputs.bundle_base64 }}
           INPUT_HANDLE: ${{ inputs.handle }}
           INPUT_SEQUENCE: ${{ inputs.release_sequence }}

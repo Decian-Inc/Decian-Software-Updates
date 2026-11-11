@@ -1,7 +1,6 @@
 """Bounded GitHub Release transport. Credentials never follow asset redirects."""
 import json
 import pathlib
-import re
 import time
 import stat
 import urllib.error
@@ -9,6 +8,7 @@ import urllib.parse
 import urllib.request
 from update_public_import import REPOSITORY
 from update_repository import GitHubRepository, require
+import update_release_policy as policy
 def regular(path):
     path = pathlib.Path(path)
     require(path.is_file(), 'Upload path is not a file')
@@ -38,7 +38,7 @@ class GitHubAssets:
         self.opener = urllib.request.build_opener(NoFollow())
 
     def lookup(self, tag):
-        require(re.fullmatch(r'secure-access-dev-[1-9][0-9]{0,18}', tag) is not None, 'Invalid release tag')
+        policy.validate_tag(tag)
         # The tag lookup endpoint excludes drafts. Authenticated listing preserves draft retry identity.
         matches = []
         for page in range(1, 11):
@@ -56,6 +56,7 @@ class GitHubAssets:
         return result
 
     def check_tag(self, tag, commit, allow_missing=False):
+        policy.validate_tag(tag)
         try: ref = self.repository.api('GET', '/git/ref/tags/' + tag)
         except RuntimeError as error:
             if allow_missing and str(error) == 'GitHub publication request failed: HTTP 404': return
@@ -68,11 +69,12 @@ class GitHubAssets:
         return self.repository.api('POST', '/releases', {'tag_name': tag, 'target_commitish': commit,
             'name': tag, 'body': body, 'draft': True, 'prerelease': True, 'make_latest': 'false'})
 
-    def upload(self, release_id, path, size):
+    def upload(self, release_id, path, size, asset_name=policy.SECURE_ACCESS_ASSET):
+        policy.validate_asset_name(asset_name)
         require(self.token and type(release_id) is int and release_id > 0, 'Invalid upload scope')
         path = pathlib.Path(path); regular(path)
-        require(path.stat().st_size == size <= 250 * 1024 * 1024 + 36, 'Invalid upload length')
-        url = f'https://uploads.github.com/repos/{REPOSITORY}/releases/{release_id}/assets?name=0.4.19.dcu'
+        require(path.stat().st_size == size <= policy.INVESTIGATOR_MAX_PACKAGE_SIZE, 'Invalid upload length')
+        url = f'https://uploads.github.com/repos/{REPOSITORY}/releases/{release_id}/assets?name={asset_name}'
         with path.open('rb') as stream:
             request = urllib.request.Request(url, data=stream, method='POST', headers={
                 'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/octet-stream',
@@ -90,10 +92,9 @@ class GitHubAssets:
         return self.repository.api('PATCH', f'/releases/{release_id}', {'draft': False, 'prerelease': True, 'make_latest': 'false'})
 
     def download(self, asset_id, destination, size, public_url=None):
-        require(type(asset_id) is int and asset_id > 0 and 36 <= size <= 250 * 1024 * 1024 + 36, 'Invalid download scope')
+        require(type(asset_id) is int and asset_id > 0 and policy.PACKAGE_HEADER_SIZE <= size <= policy.INVESTIGATOR_MAX_PACKAGE_SIZE, 'Invalid download scope')
         if public_url is not None:
-            require(re.fullmatch(r'https://github.com/Decian-Inc/Decian-Software-Updates/releases/download/secure-access-dev-[1-9][0-9]{0,18}/0\.4\.19\.dcu', public_url) is not None,
-                    'Invalid public asset URL')
+            policy.validate_public_url(public_url)
             url = public_url; headers = {}
         else:
             url = f'https://api.github.com/repos/{REPOSITORY}/releases/assets/{asset_id}'

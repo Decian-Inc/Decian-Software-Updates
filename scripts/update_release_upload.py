@@ -2,13 +2,16 @@
 import tempfile
 import pathlib
 from update_release_metadata import verify_ciphertext
+from update_public_import import INVESTIGATOR
+import update_release_policy as policy
 from update_repository import require
 
 
 def ensure_asset(assets, delivery, ciphertext, public_head):
     verify_ciphertext(ciphertext, delivery)
-    tag = f'secure-access-dev-{delivery.sequence}'
-    body = 'Decian encrypted Secure Access dev package\nSHA256: ' + delivery.package_sha256
+    tag = policy.release_tag(delivery.product, delivery.sequence)
+    product_name = '365II' if delivery.product == INVESTIGATOR else 'Secure Access'
+    body = f'Decian encrypted {product_name} dev package\nSHA256: {delivery.package_sha256}'
     release = assets.lookup(tag)
     if release is None:
         try: assets.create(tag, public_head, body)
@@ -21,14 +24,14 @@ def ensure_asset(assets, delivery, ciphertext, public_head):
     require(isinstance(release.get('assets'), list) and len(release['assets']) <= 1, 'Unexpected release assets')
     if not release['assets']:
         require(release['draft'], 'Published release is missing its original asset')
-        try: assets.upload(release['id'], ciphertext, delivery.package_size)
+        try: assets.upload(release['id'], ciphertext, delivery.package_size, delivery.asset_name)
         except (RuntimeError, OSError): pass
         reread = assets.lookup(tag)
         require(reread is not None and reread['id'] == release['id'] and reread['draft'] == release['draft'], 'Release changed during upload')
         release = reread
     require(len(release['assets']) == 1, 'Upload not confirmed; preserve candidate')
     asset = release['assets'][0]
-    require(type(asset.get('id')) is int and asset['id'] > 0 and asset.get('name') == '0.4.19.dcu' and
+    require(type(asset.get('id')) is int and asset['id'] > 0 and asset.get('name') == delivery.asset_name and
             asset.get('size') == delivery.package_size and asset.get('state') == 'uploaded' and
             asset.get('browser_download_url') == delivery.package_path and
             asset.get('digest') in (None, 'sha256:' + delivery.package_sha256), 'Asset identity conflicts; never overwrite')
