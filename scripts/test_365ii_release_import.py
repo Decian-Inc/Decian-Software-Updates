@@ -167,6 +167,26 @@ class InvestigatorReleaseTests(unittest.TestCase):
         self.assertEqual(self.repo.files[other], b'preserve Secure Access')
         self.assertEqual(assets.release['tag_name'], self.product + '-dev-1')
 
+    def test_installed_patch_uses_signed_name_and_round_trips(self):
+        url = policy.package_url(self.product, 1, '0.8.7.patch.dcu')
+        policy.validate_public_url(url)
+        handoff = self.handoff(self.offer(1, '0.8.7', packagePath=url), 1)
+        assets = MemoryAssets(url)
+        first = self.publish(handoff, assets)
+        self.assertEqual(first, self.publish(handoff, assets))
+        self.assertEqual(assets.release['assets'][0]['name'], '0.8.7.patch.dcu')
+        self.assertEqual(assets.downloads, [None, url, None, url])
+        self.assertEqual(len(self.repo.writes), 1)
+
+    def test_patch_url_is_bound_to_exact_numeric_version_and_product(self):
+        for name in ('0.8.6.patch.dcu', '0.8.7-beta.patch.dcu', '0.8.7.patch.dcu?x=1'):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                url = policy.package_url(self.product, 1, name)
+                verify_metadata(self.offer(1, '0.8.7', packagePath=url), self.f.pin, self.f.now,
+                                self.grant, self.grant_sig, self.product)
+        with self.assertRaises(ValueError):
+            policy.validate_public_url(policy.package_url(common.SECURE_ACCESS, 2, '0.4.19.patch.dcu'))
+
     def test_final_asset_url_must_match_after_draft_publication(self):
         handoff = self.handoff(self.offer(1, '0.8.4'), 1)
 

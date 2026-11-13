@@ -62,7 +62,8 @@ def validate_tag(tag):
 
 def validate_asset_name(name):
     require(isinstance(name, str) and name.endswith('.dcu'), 'Invalid release asset name')
-    version_tuple(name[:-4])
+    suffix = '.patch.dcu' if name.endswith('.patch.dcu') else '.dcu'
+    version_tuple(name[:-len(suffix)])
 
 
 def validate_public_url(url):
