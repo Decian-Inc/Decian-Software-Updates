@@ -27,7 +27,7 @@ class VerifiedDelivery:
 
     @property
     def asset_name(self):
-        return f'{self.version}.dcu'
+        return self.package_path.rsplit('/', 1)[1]
 
 
 def verify_current_grant(grant_bytes, signature, pin, now, product=common.SECURE_ACCESS):
@@ -64,19 +64,22 @@ def verify_metadata(files, pin, now, grant_bytes, grant_signature, product=commo
         plaintext_sha256 = REVIEWED.bundle_sha256
         package_size = REVIEWED.bundle_size + policy.PACKAGE_HEADER_SIZE
     else:
-        # The signed authority handoff binds the reviewed raw Setup digest and size.
+        # The signed authority handoff binds the reviewed Setup or installed patch digest and size.
         version = release.get('version')
         policy.version_tuple(version)
         plaintext_sha256, package_size = release.get('plaintextSha256'), release.get('packageSize')
         require(isinstance(plaintext_sha256, str) and re.fullmatch(r'[a-f0-9]{64}', plaintext_sha256) is not None and
                 type(package_size) is int and policy.PACKAGE_HEADER_SIZE < package_size <= policy.INVESTIGATOR_MAX_PACKAGE_SIZE,
-                'Invalid signed 365II Setup identity')
+                'Invalid signed 365II payload identity')
     prefix = policy.release_prefix(product, sequence, version)
     envelope_path = prefix + '/envelopes/' + grant['updateHandle']
     require(set(files) == {offer_path + '.json', offer_path + '.sig.json', envelope_path + '.json', envelope_path + '.sig.json'},
             'Unexpected metadata paths')
+    setup_url = policy.package_url(product, sequence, f'{version}.dcu')
+    patch_url = policy.package_url(product, sequence, f'{version}.patch.dcu')
+    package_url = patch_url if product == common.INVESTIGATOR and release.get('packagePath') == patch_url else setup_url
     expected = {'schemaVersion': 1, 'productId': product, 'version': version, 'channel': 'dev',
-        'packagePath': policy.package_url(product, sequence, f'{version}.dcu'),
+        'packagePath': package_url,
         'packageAlgorithm': 'AES-256-GCM', 'plaintextSha256': plaintext_sha256, 'packageSize': package_size,
         'associatedData': f'DECIAN|UPDATE|1|{product}|{version}|dev',
         'entitlementBasePath': prefix + '/envelopes', 'signingKeyId': key_id}
