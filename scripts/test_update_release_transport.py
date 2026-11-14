@@ -3,6 +3,7 @@ import pathlib
 import tempfile
 import unittest
 import urllib.error
+from unittest.mock import Mock, call
 import update_release_assets as transport
 
 class Response(io.BytesIO):
@@ -23,6 +24,28 @@ class TransportTests(unittest.TestCase):
         self.assertTrue(callable(update_release_import.publish))
     def client(self,responses):
         client=object.__new__(transport.GitHubAssets); client.token='disposable-test-token'; client.opener=Opener(responses); return client
+
+    def test_create_365ii_draft_checks_reviewed_commit_and_exact_release_fields(self):
+        client = self.client([])
+        client.repository = Mock()
+        tag = 'm365-incident-investigator-dev-1'
+        commit = 'a' * 40
+        body = 'Fixture for encrypted 365II development update'
+        release = {'id': 42}
+        client.repository.api.side_effect = [RuntimeError('GitHub publication request failed: HTTP 404'), release]
+
+        self.assertIs(client.create(tag, commit, body), release)
+        self.assertEqual(client.repository.api.call_args_list, [
+            call('GET', '/git/ref/tags/' + tag),
+            call('POST', '/releases', {'tag_name': tag, 'target_commitish': commit, 'name': tag,
+                                     'body': body, 'draft': True, 'prerelease': True, 'make_latest': 'false'}),
+        ])
+
+        client.repository.api.reset_mock()
+        with self.assertRaisesRegex(ValueError, 'reviewed commit required'):
+            client.create(tag, 'refs/heads/main', body)
+        client.repository.api.assert_not_called()
+
     def test_redirect_strips_credentials_and_streams_exact_bytes(self):
         redirect=urllib.error.HTTPError('https://api.github.com/x',302,'redirect',{'Location':'https://release-assets.githubusercontent.com/path?signature=fixture'},None)
         client=self.client([redirect,Response(bytes(40),{'Content-Length':'40'})])

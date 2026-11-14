@@ -1,6 +1,7 @@
 """Bounded GitHub Release transport. Credentials never follow asset redirects."""
 import json
 import pathlib
+import re
 import time
 import stat
 import urllib.error
