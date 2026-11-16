@@ -2,8 +2,6 @@ name: License-aligned public grant qualification
 on:
   push:
     branches: [fix/license-aligned-update-grants]
-  pull_request:
-    paths: ['scripts/**', '.github/workflows/*grant*.yml']
 permissions:
   contents: read
 jobs:
