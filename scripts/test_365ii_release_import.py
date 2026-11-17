@@ -11,7 +11,7 @@ import update_release_policy as policy
 import update_renewal_import as renewal
 from update_release_metadata import verify_metadata
 from update_release_plan import apply_plan, plan
-from update_release_source import REVIEWED
+from update_release_source import REVIEWED, reviewed_for
 
 
 def digest(data):
@@ -87,7 +87,8 @@ class InvestigatorReleaseTests(unittest.TestCase):
         prefix = policy.release_prefix(product, sequence, version)
         size, sha = len(self.cipher), 'a' * 64
         if product == common.SECURE_ACCESS:
-            size, sha = REVIEWED.bundle_size + policy.PACKAGE_HEADER_SIZE, REVIEWED.bundle_sha256
+            reviewed = reviewed_for(sequence)
+            size, sha = reviewed.bundle_size + policy.PACKAGE_HEADER_SIZE, reviewed.bundle_sha256
         release = {
             'schemaVersion': 1, 'productId': product, 'version': version, 'channel': 'dev',
             'packagePath': policy.package_url(product, sequence, f'{version}.dcu'),
@@ -259,10 +260,49 @@ class InvestigatorReleaseTests(unittest.TestCase):
 
     def test_secure_access_pinned_legacy_scope_still_verifies(self):
         grant, signature = self.sign(dict(self.f.grant, productId=common.SECURE_ACCESS))
-        files = self.offer(3, REVIEWED.version, scope=common.SECURE_ACCESS)
+        files = self.offer(2, REVIEWED.version, scope=common.SECURE_ACCESS)
         delivery = verify_metadata(files, self.f.pin, self.f.now, grant, signature)
         self.assertEqual(delivery.asset_name, '0.4.19.dcu')
         self.assertEqual(delivery.package_size, REVIEWED.bundle_size + policy.PACKAGE_HEADER_SIZE)
         with self.assertRaises(ValueError):
-            verify_metadata(self.offer(3, REVIEWED.version, scope=common.SECURE_ACCESS, plaintextSha256='0' * 64),
+            verify_metadata(self.offer(2, REVIEWED.version, scope=common.SECURE_ACCESS, plaintextSha256='0' * 64),
                             self.f.pin, self.f.now, grant, signature)
+
+    def test_secure_access_current_grant_accepts_each_reviewed_source(self):
+        grant, signature = self.sign(dict(self.f.grant, productId=common.SECURE_ACCESS, sequence=3))
+        for sequence, version in ((2, '0.4.19'), (3, '0.4.20'), (4, '0.4.26')):
+            with self.subTest(sequence=sequence):
+                reviewed = reviewed_for(sequence)
+                files = self.offer(sequence, version, scope=common.SECURE_ACCESS)
+                delivery = verify_metadata(files, self.f.pin, self.f.now, grant, signature)
+                self.assertEqual((delivery.sequence, delivery.version), (sequence, version))
+                self.assertEqual(delivery.asset_name, version + '.dcu')
+                self.assertEqual(delivery.package_size, reviewed.bundle_size + policy.PACKAGE_HEADER_SIZE)
+                policy.validate_public_url(delivery.package_path)
+
+    def test_secure_access_dev4_refuses_wrong_version_digest_and_size(self):
+        grant, signature = self.sign(dict(self.f.grant, productId=common.SECURE_ACCESS, sequence=3))
+        for version in ('0.4.19', '0.4.20', '0.4.21'):
+            with self.subTest(version=version), self.assertRaises(ValueError):
+                verify_metadata(self.offer(4, version, scope=common.SECURE_ACCESS),
+                                self.f.pin, self.f.now, grant, signature)
+        reviewed = reviewed_for(4)
+        for changes in ({'plaintextSha256': REVIEWED.bundle_sha256},
+                        {'packageSize': reviewed.bundle_size},
+                        {'packagePath': policy.package_url(common.SECURE_ACCESS, 3, '0.4.26.dcu')}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                verify_metadata(self.offer(4, reviewed.version, scope=common.SECURE_ACCESS, **changes),
+                                self.f.pin, self.f.now, grant, signature)
+
+    def test_secure_access_public_url_binds_sequence_to_reviewed_version(self):
+        for sequence in (2, 3, 4):
+            for version in ('0.4.19', '0.4.20', '0.4.21', '0.4.26'):
+                url = policy.package_url(common.SECURE_ACCESS, sequence, version + '.dcu')
+                with self.subTest(sequence=sequence, version=version):
+                    if version == reviewed_for(sequence).version:
+                        policy.validate_public_url(url)
+                    else:
+                        with self.assertRaises(ValueError):
+                            policy.validate_public_url(url)
+        with self.assertRaises(ValueError):
+            policy.validate_public_url(policy.package_url(common.SECURE_ACCESS, 5, '0.4.26.dcu'))

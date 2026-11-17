@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 import update_public_import as common
 from update_validation_import import verify_signed
-from update_release_source import REVIEWED
+from update_release_source import reviewed_for
 import update_release_policy as policy
 from update_repository import require
 
@@ -60,9 +60,10 @@ def verify_metadata(files, pin, now, grant_bytes, grant_signature, product=commo
     release = offer['release']
     require(isinstance(release, dict), 'Invalid release record')
     if product == common.SECURE_ACCESS:
-        version = REVIEWED.version
-        plaintext_sha256 = REVIEWED.bundle_sha256
-        package_size = REVIEWED.bundle_size + policy.PACKAGE_HEADER_SIZE
+        reviewed = reviewed_for(sequence)
+        version = reviewed.version
+        plaintext_sha256 = reviewed.bundle_sha256
+        package_size = reviewed.bundle_size + policy.PACKAGE_HEADER_SIZE
     else:
         # The signed authority handoff binds the reviewed Setup or installed patch digest and size.
         version = release.get('version')
