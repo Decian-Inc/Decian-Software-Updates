@@ -1,15 +1,20 @@
+<img src="docs/branding/decian-updates.png" alt="Decian Updates mark" width="112">
+
 # Decian Software Updates
 
-Public cryptographically protected software update catalog for Decian products.
+Public, cryptographically protected software update distribution for Decian products.
 
-## Security boundary
+| Resource | What it covers |
+| --- | --- |
+| [Public catalog](catalog.json) | The signed catalog entry point for the protocol demonstration. |
+| [Update distribution overview](docs/UPDATE-DISTRIBUTION-OVERVIEW.md) | Catalog layout, trust assumptions, verification and update access. |
+| [Release import](docs/REAL-UPDATE-IMPORT.md) | How reviewed encrypted releases enter the public feed. |
+| [Grant import](UPDATE-GRANT-IMPORT.md) and [license alignment](docs/LICENSE-ALIGNED-GRANTS.md) | How signed installation-specific update access is published. |
 
-This repository is distribution-only. It must never contain Decian product source code, GitHub credentials, release-signing private keys, installation private keys, raw license secrets, or unencrypted production release payloads.
+## Update Protocol v1 proof of concept
 
-Endpoints should trust pinned Decian signing keys and cryptographic verification, not repository visibility alone.
+The [protocol demonstration](products/DECIAN-UPDATE-POC/product.json) includes a [release-candidate channel](products/DECIAN-UPDATE-POC/channels/rc.json) and an intentionally small non-production package. It demonstrates signed metadata, AES-256-GCM release encryption, RSA-OAEP-SHA256 installation-specific release-key wrapping, and detached RSA-PSS-SHA256 signatures.
 
-## Current state
+## Distribution boundary
 
-Update Protocol v1 POC is published under `products/DECIAN-UPDATE-POC/`.
-
-The POC package is intentionally tiny and non-production. It demonstrates signed metadata, AES-256-GCM encrypted release packaging, RSA-OAEP-SHA256 installation-specific release-key wrapping, and detached RSA-PSS-SHA256 signatures.
+This repository publishes distribution artifacts. Decian product source, GitHub credentials, release-signing private keys, installation private keys, raw license secrets, and unencrypted production release payloads must stay outside it. Installed clients establish trust with pinned Decian signing keys and cryptographic verification.
