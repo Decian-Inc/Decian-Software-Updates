@@ -10,6 +10,7 @@ from update_release_plan import plan, apply_plan
 from update_release_upload import ensure_asset
 from update_release_metadata import verify_ciphertext
 from update_repository import require
+from update_release_cli import UploadFailure, qualified_cli
 from update_public_import import INVESTIGATOR, REPOSITORY, SECURE_ACCESS
 import update_release_policy as policy
 
@@ -52,6 +53,7 @@ def main():
     product=os.environ.get('INPUT_PRODUCT', SECURE_ACCESS)
     require(re.fullmatch(r'[1-9][0-9]{0,18}',sequence) is not None and policy.sequence_valid(product, int(sequence)),
             'Invalid reviewed product and sequence')
+    qualified_cli()  # Fail before creating a draft if the exact upload tool is unavailable.
     public=GitHubRepository(REPOSITORY,os.environ.get('GITHUB_TOKEN'),False)
     require(public.snapshot()['sha']==os.environ.get('GITHUB_SHA'),'Public main changed since checkout')
     pin=pathlib.Path(__file__).resolve().parents[1]/'config/update-signing-public-key.pem'
@@ -63,4 +65,5 @@ def main():
 
 if __name__=='__main__':
     try: main()
+    except UploadFailure as error: raise SystemExit(str(error)) from None
     except Exception: raise SystemExit('Real-release import stopped. Preserve candidate and release assets; no offer completion is confirmed.') from None

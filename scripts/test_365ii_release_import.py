@@ -168,6 +168,54 @@ class InvestigatorReleaseTests(unittest.TestCase):
         self.assertEqual(self.repo.files[other], b'preserve Secure Access')
         self.assertEqual(assets.release['tag_name'], self.product + '-dev-1')
 
+    def test_ambiguous_upload_is_reconciled_without_a_second_post(self):
+        from update_release_cli import UploadFailure
+        class LostReplyAssets(MemoryAssets):
+            uploads = 0
+            def upload(self, release_id, path, size, name):
+                self.uploads += 1
+                super().upload(release_id, path, size, name)
+                raise UploadFailure('timeout')
+        assets = LostReplyAssets(policy.package_url(self.product, 1, '0.8.4.dcu'))
+        handoff = self.handoff(self.offer(1, '0.8.4'), 1)
+        first = self.publish(handoff, assets)
+        self.assertEqual(first, self.publish(handoff, assets))
+        self.assertEqual(assets.uploads, 1)
+        self.assertEqual(len(self.repo.writes), 1)
+        self.assertEqual(assets.release['assets'][0]['id'], 2)
+
+    def test_unconfirmed_upload_preserves_draft_and_reports_safe_code(self):
+        from update_release_cli import UploadFailure
+        class FailedAssets(MemoryAssets):
+            uploads = 0
+            def upload(self, release_id, path, size, name):
+                self.uploads += 1
+                raise UploadFailure('http-413')
+        assets = FailedAssets(policy.package_url(self.product, 1, '0.8.4.dcu'))
+        with self.assertRaises(UploadFailure) as found:
+            self.publish(self.handoff(self.offer(1, '0.8.4'), 1), assets)
+        self.assertEqual(found.exception.code, 'http-413')
+        self.assertEqual(assets.uploads, 1)
+        self.assertTrue(assets.release['draft'])
+        self.assertEqual(assets.release['assets'], [])
+        self.assertEqual(self.repo.writes, [])
+
+    def test_preexisting_conflicting_asset_is_never_uploaded_or_overwritten(self):
+        class ConflictAssets(MemoryAssets):
+            uploads = 0
+            def create(self, tag, commit, body):
+                super().create(tag, commit, body)
+                self.release['assets'] = [{'id': 99, 'name': 'conflict.dcu', 'size': 60, 'state': 'uploaded'}]
+            def upload(self, *args):
+                self.uploads += 1
+                raise AssertionError('Must preserve conflicting asset')
+        assets = ConflictAssets(policy.package_url(self.product, 1, '0.8.4.dcu'))
+        with self.assertRaisesRegex(ValueError, 'Asset identity conflicts'):
+            self.publish(self.handoff(self.offer(1, '0.8.4'), 1), assets)
+        self.assertEqual(assets.uploads, 0)
+        self.assertEqual(assets.release['assets'][0]['id'], 99)
+        self.assertEqual(self.repo.writes, [])
+
     def test_installed_patch_uses_signed_name_and_round_trips(self):
         url = policy.package_url(self.product, 1, '0.8.7.patch.dcu')
         policy.validate_public_url(url)
