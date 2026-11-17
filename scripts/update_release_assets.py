@@ -71,22 +71,8 @@ class GitHubAssets:
             'name': tag, 'body': body, 'draft': True, 'prerelease': True, 'make_latest': 'false'})
 
     def upload(self, release_id, path, size, asset_name=policy.SECURE_ACCESS_ASSET):
-        policy.validate_asset_name(asset_name)
-        require(self.token and type(release_id) is int and release_id > 0, 'Invalid upload scope')
-        path = pathlib.Path(path); regular(path)
-        require(path.stat().st_size == size <= policy.INVESTIGATOR_MAX_PACKAGE_SIZE, 'Invalid upload length')
-        url = f'https://uploads.github.com/repos/{REPOSITORY}/releases/{release_id}/assets?name={asset_name}'
-        with path.open('rb') as stream:
-            request = urllib.request.Request(url, data=stream, method='POST', headers={
-                'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/octet-stream',
-                'Content-Length': str(size), 'Accept': 'application/vnd.github+json',
-                'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'Decian-Release-Publisher/1'})
-            try:
-                with self.opener.open(request, timeout=180) as response:
-                    raw = response.read(65537); require(len(raw) <= 65536, 'Upload response exceeds bound')
-                    return json.loads(raw)
-            except (urllib.error.HTTPError, urllib.error.URLError, OSError):
-                raise RuntimeError('Release asset upload not confirmed; reconcile original bytes') from None
+        from update_release_cli import upload
+        return upload(self.token, release_id, path, size, asset_name)
 
     def publish(self, release_id):
         require(self.token and type(release_id) is int and release_id > 0, 'Invalid publish scope')

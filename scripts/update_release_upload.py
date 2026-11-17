@@ -6,6 +6,7 @@ from update_release_metadata import verify_ciphertext
 from update_public_import import INVESTIGATOR
 import update_release_policy as policy
 from update_repository import require
+from update_release_cli import UploadFailure
 
 
 def validate_release(release, tag, public_head, body, expected_id=None):
@@ -42,12 +43,18 @@ def ensure_asset(assets, delivery, ciphertext, public_head):
     assets.check_tag(tag, public_head, allow_missing=release['draft'])
     if not release['assets']:
         require(release['draft'], 'Published release is missing its original asset')
+        upload_failure = None
         try: assets.upload(release['id'], ciphertext, delivery.package_size, delivery.asset_name)
-        except (RuntimeError, OSError): pass
+        except (RuntimeError, OSError) as error:
+            # A lost reply can follow a completed write. Reconcile the original
+            # immutable draft before reporting any error; never repeat the POST.
+            upload_failure = error
         reread = assets.lookup(tag)
         validate_release(reread, tag, public_head, body, release['id'])
         require(reread['draft'] == release['draft'], 'Release changed during upload')
         release = reread
+        if not release['assets'] and isinstance(upload_failure, UploadFailure):
+            raise upload_failure
     require(len(release['assets']) == 1, 'Upload not confirmed; preserve candidate')
     asset = release['assets'][0]
     validate_asset(asset, delivery, published=not release['draft'])
