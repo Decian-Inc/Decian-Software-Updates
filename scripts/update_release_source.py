@@ -35,6 +35,38 @@ REVIEWED = ReviewedSource(
     'ad4597d36cf15f7ccd975e6fbe0df9bd7b470a2a9fa5af8ced30f19556b4fb58', 127301)
 
 
+# Sequence 2 remains immutable. New sources require explicit reviewed entries.
+REVIEWED_PRODUCT_0420 = ReviewedSource(
+    'Decian-Inc/Decian-Secure-Access', '64671952e0a219a51c22b5de771b315f8c06e859',
+    'test-product-updater-64671952', '0.4.20',
+    '2ef7858effb1da74cfdd673556aaaac5ab29cc4548f3f3feabf84faeb3025d28', 147295915,
+    'c50d2cab2e9dbf414b3d17b4fadf487623fec499a976e63d5eb16dc44d722cc3', 147043016,
+    'a3fd5cb1e2d0928ab2946af5696ea4ceeab2831b048cb38bd2406c940e8ef6f0', 125325,
+    'abc677cd082da2773773b784304ac8842dabad78614539707938ed9a5aaf28eb', 127554)
+# The unissued 0.4.21 source was superseded by the owner-approved protected pilot.
+# The authority retains the original request and authorization in its release history.
+REVIEWED_PRODUCT_0426 = ReviewedSource(
+    'Decian-Inc/Decian-Secure-Access', '4023bbb77e2f83e2308796dcf9718eb48816f14d',
+    'test-product-updater-4023bbb7', '0.4.26',
+    '39c5369c607e6fbd0503e011a2889620e99ba9e77e7905970d8bd14e37a5d9b4', 148250404,
+    '5f7f93232478fd013f81b5574d5a84640395b02a82206403118b75d14da7aa1f', 148074256,
+    'fc4c054d3772ee0e82a8d9119a3bf10e26c8496ec831510571feec46ba1b4b1e', 87305,
+    '9a42f594051d1fc64f53a4575f77b3c64fd9c951f0ccbaea8ae76d4f015e8bef', 88823)
+REVIEWED_BY_SEQUENCE = {2: REVIEWED, 3: REVIEWED_PRODUCT_0420, 4: REVIEWED_PRODUCT_0426}
+
+
+def reviewed_for(sequence):
+    require(type(sequence) is int and sequence in REVIEWED_BY_SEQUENCE,
+            'Release sequence has no reviewed source')
+    return REVIEWED_BY_SEQUENCE[sequence]
+
+
+def installer_name(expected):
+    if expected.tag.startswith('test-product-updater-'):
+        return 'Ironclad-Product-Update-' + expected.commit[:8] + '-Payload.exe'
+    return 'Ironclad-Update-Patch-' + expected.commit[:8] + '-Payload.exe'
+
+
 def _inspect(stream, expected):
     """Stream bounded segments; trusted expected is compiled review evidence."""
     header = stream.read(20)
@@ -55,16 +87,16 @@ def _inspect(stream, expected):
     return asdict(expected)
 
 
-def verify_bundle(path):
+def verify_bundle(path, sequence=2):
     path = pathlib.Path(path)
     require(not path.is_symlink() and stat.S_ISREG(path.stat().st_mode), 'Bundle must be a regular file')
     with path.open('rb') as stream:
-        return _inspect(stream, REVIEWED)
+        return _inspect(stream, reviewed_for(sequence))
 
 
 def _assemble(directory, output, expected):
     directory, output = pathlib.Path(directory), pathlib.Path(output)
-    names = ('Ironclad-Update-Patch-11751c59-Payload.exe', 'net8.0-windows.json', 'net10.0-windows.json')
+    names = (installer_name(expected), 'net8.0-windows.json', 'net10.0-windows.json')
     lengths = (expected.installer_size, expected.net8_size, expected.net10_size)
     hashes = (expected.installer_sha256, expected.net8_sha256, expected.net10_sha256)
     created = False
@@ -89,7 +121,7 @@ def _assemble(directory, output, expected):
         raise
 
 
-def assemble(directory, output): return _assemble(directory, output, REVIEWED)
+def assemble(directory, output, sequence=2): return _assemble(directory, output, reviewed_for(sequence))
 
 
 if __name__ == '__main__':
@@ -97,6 +129,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Assemble the exact reviewed bundle; never runs the installer.')
     parser.add_argument('--input-directory', required=True, type=pathlib.Path)
     parser.add_argument('--output', required=True, type=pathlib.Path)
+    parser.add_argument('--release-sequence', type=int, default=2)
     args = parser.parse_args()
-    assemble(args.input_directory, args.output)
-    print('REVIEWED_SOURCE_BUNDLE_READY sha256=' + REVIEWED.bundle_sha256)
+    assemble(args.input_directory, args.output, args.release_sequence)
+    print('REVIEWED_SOURCE_BUNDLE_READY sha256=' + reviewed_for(args.release_sequence).bundle_sha256)

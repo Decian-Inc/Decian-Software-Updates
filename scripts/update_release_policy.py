@@ -74,4 +74,6 @@ def validate_public_url(url):
     product = validate_tag(parts[0])
     validate_asset_name(parts[1])
     if product == SECURE_ACCESS:
-        require(parts[1] == SECURE_ACCESS_ASSET, 'Invalid Secure Access asset name')
+        from update_release_source import reviewed_for
+        sequence = int(parts[0].rsplit('-', 1)[1])
+        require(parts[1] == reviewed_for(sequence).version + '.dcu', 'Invalid Secure Access asset name')

@@ -34,9 +34,19 @@ concurrency:
 jobs:
   import:
     if: github.ref == 'refs/heads/main' && github.repository == 'Decian-Inc/Decian-Software-Updates'
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [decian-public-update-import]
     timeout-minutes: 20
     steps:
+      - name: Require the designated public import device and staging account
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ('${{ runner.environment }}' -cne 'self-hosted' -or
+              $env:RUNNER_OS -cne 'Windows' -or $env:RUNNER_ARCH -cne 'X64' -or
+              $env:COMPUTERNAME -cne 'DESKTOP-EPCJMH2' -or
+              [Security.Principal.WindowsIdentity]::GetCurrent().Name -cne 'NT AUTHORITY\NETWORK SERVICE') {
+            throw 'Public import requires the designated existing Windows device and shared staging account.'
+          }
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
