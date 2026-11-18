@@ -394,7 +394,7 @@ class InvestigatorReleaseTests(unittest.TestCase):
 
     def test_secure_access_current_grant_accepts_each_reviewed_source(self):
         grant, signature = self.sign(dict(self.f.grant, productId=common.SECURE_ACCESS, sequence=3))
-        for sequence, version in ((2, '0.4.19'), (3, '0.4.20'), (4, '0.4.26'), (5, '0.4.27')):
+        for sequence, version in ((2, '0.4.19'), (3, '0.4.20'), (4, '0.4.26'), (5, '0.4.27'), (6, '0.4.29')):
             with self.subTest(sequence=sequence):
                 reviewed = reviewed_for(sequence)
                 files = self.offer(sequence, version, scope=common.SECURE_ACCESS)
@@ -417,9 +417,28 @@ class InvestigatorReleaseTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             verify_metadata(self.offer(5, previous.version, scope=common.SECURE_ACCESS),
                             self.f.pin, self.f.now, grant, signature)
-        for sequence in (True, 6):
+        for sequence in (True, 7):
             with self.subTest(sequence=sequence), self.assertRaisesRegex(ValueError, 'no reviewed source'):
                 reviewed_for(sequence)
+
+    def test_secure_access_dev6_binds_new_source_and_preserves_current_grant(self):
+        grant, signature = self.sign(dict(self.f.grant, productId=common.SECURE_ACCESS, sequence=3))
+        reviewed = reviewed_for(6)
+        files = self.offer(6, reviewed.version, scope=common.SECURE_ACCESS)
+        delivery = verify_metadata(files, self.f.pin, self.f.now, grant, signature)
+        self.assertEqual((delivery.sequence, delivery.version, delivery.package_size),
+                         (6, '0.4.29', 182078620 + policy.PACKAGE_HEADER_SIZE))
+        for changes in ({'plaintextSha256': reviewed_for(5).bundle_sha256},
+                        {'packageSize': reviewed_for(5).bundle_size + policy.PACKAGE_HEADER_SIZE},
+                        {'packageSize': reviewed.bundle_size},
+                        {'packagePath': policy.package_url(common.SECURE_ACCESS, 5, '0.4.29.dcu')}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                verify_metadata(self.offer(6, reviewed.version, scope=common.SECURE_ACCESS, **changes),
+                                self.f.pin, self.f.now, grant, signature)
+        for version in ('0.4.27', '0.4.28'):
+            with self.subTest(version=version), self.assertRaises(ValueError):
+                verify_metadata(self.offer(6, version, scope=common.SECURE_ACCESS),
+                                self.f.pin, self.f.now, grant, signature)
 
     def test_secure_access_dev4_refuses_wrong_version_digest_and_size(self):
         grant, signature = self.sign(dict(self.f.grant, productId=common.SECURE_ACCESS, sequence=3))
@@ -436,8 +455,8 @@ class InvestigatorReleaseTests(unittest.TestCase):
                                 self.f.pin, self.f.now, grant, signature)
 
     def test_secure_access_public_url_binds_sequence_to_reviewed_version(self):
-        for sequence in (2, 3, 4):
-            for version in ('0.4.19', '0.4.20', '0.4.21', '0.4.26'):
+        for sequence in (2, 3, 4, 5, 6):
+            for version in ('0.4.19', '0.4.20', '0.4.21', '0.4.26', '0.4.27', '0.4.28', '0.4.29'):
                 url = policy.package_url(common.SECURE_ACCESS, sequence, version + '.dcu')
                 with self.subTest(sequence=sequence, version=version):
                     if version == reviewed_for(sequence).version:
