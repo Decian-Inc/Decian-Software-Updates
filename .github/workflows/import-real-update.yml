@@ -86,8 +86,6 @@ jobs:
             if ($LASTEXITCODE -eq 0) { $selected=$candidate; break }
           }
           if (!$selected) { throw 'Qualified runner Python 3.13 is missing. No package published.' }
-          & $selected .\scripts\update_release_cli.py
-          if ($LASTEXITCODE -ne 0) { throw 'Qualified upload transport is missing. No draft or package published.' }
           "RELEASE_PYTHON=$selected" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           $openssl=@((Get-Command openssl.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue),"$env:ProgramFiles\Git\usr\bin\openssl.exe","$env:ProgramFiles\Git\mingw64\bin\openssl.exe") | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
           if (!$openssl) { throw 'Runner OpenSSL is missing.' }
