@@ -263,9 +263,22 @@ class CliUploadTests(unittest.TestCase):
             worker.join(3)
 
     def actual_cli(self):
-        candidate = shutil.which('gh')
-        if not candidate: self.skipTest('GitHub CLI unavailable for local wire fixture')
-        return pathlib.Path(candidate)
+        # The production uploader deliberately supports only the pinned Windows
+        # binary. A different PATH gh can have different redirect/stdin behavior.
+        try:
+            return cli.qualified_cli()
+        except cli.UploadFailure as error:
+            if error.code != 'cli-unqualified':
+                raise
+            self.skipTest('Real wire fixture requires the exact production-qualified Windows GitHub CLI')
+
+    def test_unsupported_platform_cannot_start_any_upload_process(self):
+        import types
+        with self.source() as path, patch.object(cli, 'os', types.SimpleNamespace(name='posix')), patch.object(cli.subprocess, 'run') as invoked:
+            with self.assertRaises(cli.UploadFailure) as found:
+                cli.upload(self.token, 42, path, len(self.data), self.name)
+            self.assertEqual(found.exception.code, 'cli-unqualified')
+            invoked.assert_not_called()
 
     def run_wire(self, path, proxy, keep_https=False):
         executable = self.actual_cli()
@@ -307,12 +320,24 @@ class CliUploadTests(unittest.TestCase):
         self.assertNotIn('data', records[1])
 
     def test_actual_cli_307_308_never_replays_file_to_another_origin(self):
+        self.actual_cli()  # Skip the whole test before subTest can consume SkipTest.
         for code in (307, 308):
             with self.subTest(code=code), self.source() as path, self.wire(f'redirect-{code}') as (records, proxy):
                 try: self.run_wire(path, proxy)
                 except cli.UploadFailure: pass
             self.assertEqual(len(records), 1)
             self.assertEqual(records[0]['target'], self.endpoint.replace('https://', 'http://'))
+
+    def test_unqualified_client_skips_loop_tests_before_subtests(self):
+        for name in ('test_actual_cli_307_308_never_replays_file_to_another_origin',
+                     'test_actual_cli_reset_and_process_deadline_are_bounded_without_second_post'):
+            case = type(self)(name)
+            result = unittest.TestResult()
+            with patch.object(case, 'actual_cli', side_effect=unittest.SkipTest('unqualified fixture client')):
+                case.run(result)
+            self.assertEqual(len(result.skipped), 1)
+            self.assertEqual(result.failures, [])
+            self.assertEqual(result.errors, [])
 
     def test_actual_cli_https_proxy_connect_never_contains_release_token(self):
         with self.source() as path, self.wire() as (records, proxy):
@@ -324,6 +349,7 @@ class CliUploadTests(unittest.TestCase):
         self.assertNotIn(self.token, repr(records[0]['headers']))
 
     def test_actual_cli_reset_and_process_deadline_are_bounded_without_second_post(self):
+        self.actual_cli()  # Skip the whole test before subTest can consume SkipTest.
         for mode in ('reset', 'timeout'):
             with self.subTest(mode=mode), self.source() as path, self.wire(mode) as (records, proxy):
                 with patch.object(cli, 'UPLOAD_TIMEOUT', .25 if mode == 'timeout' else 5):
