@@ -1,0 +1,82 @@
+name: Import reviewed 365II grant on the public device
+on:
+  workflow_call:
+    inputs:
+      operation:
+        description: Fixed caller operation, initial or renewal
+        type: string
+        required: true
+permissions:
+  contents: write
+jobs:
+  import:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      github.repository == 'Decian-Inc/Decian-Software-Updates' &&
+      github.event.inputs.product_id == 'm365-incident-investigator' &&
+      (inputs.operation == 'initial' || inputs.operation == 'renewal')
+    runs-on: [decian-public-update-import]
+    timeout-minutes: 10
+    env:
+      GIT_CONFIG_COUNT: '1'
+      GIT_CONFIG_KEY_0: core.longpaths
+      GIT_CONFIG_VALUE_0: 'true'
+    steps:
+      - name: Require the public import device and matching dispatch
+        shell: pwsh
+        env:
+          IMPORT_OPERATION: ${{ inputs.operation }}
+          INPUT_CONFIRMATION: ${{ github.event.inputs.confirmation }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ('${{ runner.environment }}' -cne 'self-hosted' -or
+              $env:RUNNER_OS -cne 'Windows' -or $env:RUNNER_ARCH -cne 'X64' -or
+              $env:COMPUTERNAME -cne 'DESKTOP-EPCJMH2' -or
+              [Security.Principal.WindowsIdentity]::GetCurrent().Name -cne 'NT AUTHORITY\NETWORK SERVICE') {
+            throw '365II grant import requires the designated public Windows device and service account.'
+          }
+          $expected = if ($env:IMPORT_OPERATION -ceq 'initial') { 'IMPORT INITIAL GRANT' } else { 'IMPORT SAME-KEY GRANT RENEWAL' }
+          if ($env:INPUT_CONFIRMATION -cne $expected) { throw 'Explicit grant import confirmation required.' }
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Locate existing qualified Python and OpenSSL
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $candidates=@(
+            (Get-Command python.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue),
+            'C:\Python313\python.exe',
+            'C:\Program Files\Python313\python.exe',
+            'C:\Decian-Runner-Cache\LCC\Tools\Python-3.13.15-embed-amd64\python.exe'
+          ) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -Unique
+          $selected=$null
+          foreach ($candidate in $candidates) {
+            & $candidate -c "import sys,ssl,json,hashlib; assert sys.version_info[:2]==(3,13)"
+            if ($LASTEXITCODE -eq 0) { $selected=$candidate; break }
+          }
+          if (!$selected) { throw 'Qualified runner Python 3.13 is missing. Grant import stopped.' }
+          "RELEASE_PYTHON=$selected" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $openssl=@((Get-Command openssl.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue),"$env:ProgramFiles\Git\usr\bin\openssl.exe","$env:ProgramFiles\Git\mingw64\bin\openssl.exe") | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+          if (!$openssl) { throw 'Runner OpenSSL is missing.' }
+          (Split-Path -Parent $openssl) | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Verify and import the signed public grant
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          INPUT_PRODUCT: m365-incident-investigator
+          INPUT_BUNDLE: ${{ github.event.inputs.bundle_base64 }}
+          INPUT_CONFIRMATION: ${{ github.event.inputs.confirmation }}
+          IMPORT_OPERATION: ${{ inputs.operation }}
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          switch -CaseSensitive ($env:IMPORT_OPERATION) {
+            'initial' { & $env:RELEASE_PYTHON -I -B .\scripts\update_public_import.py }
+            'renewal' { & $env:RELEASE_PYTHON -I -B .\scripts\update_renewal_import.py }
+            default { throw 'Unknown grant import operation.' }
+          }
+          if ($LASTEXITCODE -ne 0) { throw '365II grant import stopped. Completion requires exact public pair readback.' }
