@@ -4,7 +4,11 @@ import json
 import os
 import pathlib
 import re
+import sys
 import tempfile
+
+# The Windows embedded Python package omits the script directory from sys.path.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from update_repository import GitHubRepository, require
 from update_release_assets import GitHubAssets
 from update_release_cli import qualified_cli, upload
