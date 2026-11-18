@@ -159,6 +159,44 @@ class InvestigatorReleaseTests(unittest.TestCase):
         self.assertEqual(len(self.repo.writes), 1)
         self.assertEqual(common.read_json(self.repo.files[self.grant_prefix + '.json'])['sequence'], 2)
 
+    def test_license_aligned_365ii_successors_preserve_short_offer_and_original_recipient(self):
+        from update_release_metadata import verify_metadata
+
+        issued = common.timestamp(self.f.grant['notBeforeUtc'])
+        previous = self.transfer['files']
+
+        def stamp(value):
+            return value.isoformat().replace('+00:00', 'Z')
+
+        for sequence, days in ((2, 90), (3, 365)):
+            start = issued + dt.timedelta(hours=sequence - 2)
+            grant = dict(self.f.grant, sequence=sequence, notBeforeUtc=stamp(start),
+                         expiresUtc=stamp(start + dt.timedelta(days=days)))
+            signed = self.f.transfer(grant)['files']
+            renewal_bundle = {'schema': 'decian-public-renewal-transfer/v1', 'repository': common.REPOSITORY,
+                              'previous': previous, 'files': signed}
+            for _ in range(2):
+                renewal.import_transfer(self.repo, self.f.encode(renewal_bundle), self.f.pin, start,
+                                        product=self.product)
+            data, sig = (base64.b64decode(signed[name]) for name in ('grant.json', 'grant.sig.json'))
+            offer = self.offer(1, '0.8.4')
+            verify_metadata(offer, self.f.pin, start, data, sig, self.product)
+            path = policy.offer_path(self.product)
+            oversized_offer = common.read_json(offer[path + '.json'])
+            oversized_offer['expiresUtc'] = stamp(issued + dt.timedelta(days=8))
+            offer[path + '.json'], offer[path + '.sig.json'] = self.sign(oversized_offer)
+            with self.assertRaises(ValueError):
+                verify_metadata(offer, self.f.pin, start, data, sig, self.product)
+            previous = signed
+        self.assertEqual(len(self.repo.writes), 2)
+
+        for change in ({'expiresUtc': stamp(start + dt.timedelta(days=365, seconds=1))},
+                       {'channel': 'beta'}, {'productId': common.SECURE_ACCESS}):
+            files = self.f.transfer(dict(grant, **change))['files']
+            pair = {name: base64.b64decode(value) for name, value in files.items()}
+            with self.assertRaises(ValueError):
+                renewal.verify_pair(pair, self.f.pin, start, self.product)
+
     def test_initial_offer_public_asset_readback_and_exact_retry(self):
         other = policy.offer_path(common.SECURE_ACCESS) + '.json'
         self.repo.files[other] = b'preserve Secure Access'
