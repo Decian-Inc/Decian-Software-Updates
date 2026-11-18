@@ -263,9 +263,22 @@ class CliUploadTests(unittest.TestCase):
             worker.join(3)
 
     def actual_cli(self):
-        candidate = shutil.which('gh')
-        if not candidate: self.skipTest('GitHub CLI unavailable for local wire fixture')
-        return pathlib.Path(candidate)
+        # The production uploader deliberately supports only the pinned Windows
+        # binary. A different PATH gh can have different redirect/stdin behavior.
+        try:
+            return cli.qualified_cli()
+        except cli.UploadFailure as error:
+            if error.code != 'cli-unqualified':
+                raise
+            self.skipTest('Real wire fixture requires the exact production-qualified Windows GitHub CLI')
+
+    def test_unsupported_platform_cannot_start_any_upload_process(self):
+        import types
+        with self.source() as path, patch.object(cli, 'os', types.SimpleNamespace(name='posix')), patch.object(cli.subprocess, 'run') as invoked:
+            with self.assertRaises(cli.UploadFailure) as found:
+                cli.upload(self.token, 42, path, len(self.data), self.name)
+            self.assertEqual(found.exception.code, 'cli-unqualified')
+            invoked.assert_not_called()
 
     def run_wire(self, path, proxy, keep_https=False):
         executable = self.actual_cli()
