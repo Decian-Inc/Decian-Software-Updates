@@ -44,6 +44,10 @@ jobs:
     timeout-minutes: 20
     env:
       INPUT_OPERATION: ${{ inputs.operation || 'publish' }}
+      # The one-job Windows runner may have a deep workspace path.
+      GIT_CONFIG_COUNT: '1'
+      GIT_CONFIG_KEY_0: core.longpaths
+      GIT_CONFIG_VALUE_0: 'true'
     steps:
       - name: Require the designated public import device and staging account
         shell: pwsh
