@@ -318,7 +318,7 @@ class InvestigatorReleaseTests(unittest.TestCase):
 
     def test_secure_access_current_grant_accepts_each_reviewed_source(self):
         grant, signature = self.sign(dict(self.f.grant, productId=common.SECURE_ACCESS, sequence=3))
-        for sequence, version in ((2, '0.4.19'), (3, '0.4.20'), (4, '0.4.26')):
+        for sequence, version in ((2, '0.4.19'), (3, '0.4.20'), (4, '0.4.26'), (5, '0.4.27')):
             with self.subTest(sequence=sequence):
                 reviewed = reviewed_for(sequence)
                 files = self.offer(sequence, version, scope=common.SECURE_ACCESS)
@@ -327,6 +327,23 @@ class InvestigatorReleaseTests(unittest.TestCase):
                 self.assertEqual(delivery.asset_name, version + '.dcu')
                 self.assertEqual(delivery.package_size, reviewed.bundle_size + policy.PACKAGE_HEADER_SIZE)
                 policy.validate_public_url(delivery.package_path)
+
+    def test_secure_access_dev5_requires_its_exact_version_source_and_sequence(self):
+        grant, signature = self.sign(dict(self.f.grant, productId=common.SECURE_ACCESS, sequence=3))
+        previous, reviewed = reviewed_for(4), reviewed_for(5)
+        for changes in ({'plaintextSha256': previous.bundle_sha256},
+                        {'packageSize': previous.bundle_size + policy.PACKAGE_HEADER_SIZE},
+                        {'packageSize': reviewed.bundle_size},
+                        {'packagePath': policy.package_url(common.SECURE_ACCESS, 4, '0.4.27.dcu')}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                verify_metadata(self.offer(5, reviewed.version, scope=common.SECURE_ACCESS, **changes),
+                                self.f.pin, self.f.now, grant, signature)
+        with self.assertRaises(ValueError):
+            verify_metadata(self.offer(5, previous.version, scope=common.SECURE_ACCESS),
+                            self.f.pin, self.f.now, grant, signature)
+        for sequence in (True, 6):
+            with self.subTest(sequence=sequence), self.assertRaisesRegex(ValueError, 'no reviewed source'):
+                reviewed_for(sequence)
 
     def test_secure_access_dev4_refuses_wrong_version_digest_and_size(self):
         grant, signature = self.sign(dict(self.f.grant, productId=common.SECURE_ACCESS, sequence=3))
