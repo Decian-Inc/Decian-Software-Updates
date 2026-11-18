@@ -2,6 +2,12 @@ name: Import reviewed real dev update
 on:
   workflow_dispatch:
     inputs:
+      operation:
+        description: Publish a reviewed signed handoff, or qualify disposable draft uploads
+        type: choice
+        required: true
+        default: publish
+        options: [publish, qualification]
       product_id:
         description: Product whose signed release or grant is being imported
         type: choice
@@ -12,18 +18,18 @@ on:
           - m365-incident-investigator
       bundle_base64:
         description: Signed public-only handoff from merged authority review
-        required: true
+        required: false
         type: string
       handle:
         description: Approved dev update handle
-        required: true
+        required: false
         type: string
       release_sequence:
         description: Exact reviewed dev release sequence
-        required: true
+        required: false
         type: string
       confirmation:
-        description: Type PUBLISH REAL DEV UPDATE
+        description: Type PUBLISH REAL DEV UPDATE or QUALIFY PUBLICATION UPLOAD
         required: true
         type: string
 permissions:
@@ -36,11 +42,21 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.repository == 'Decian-Inc/Decian-Software-Updates'
     runs-on: [decian-public-update-import]
     timeout-minutes: 20
+    env:
+      INPUT_OPERATION: ${{ inputs.operation || 'publish' }}
     steps:
       - name: Require the designated public import device and staging account
         shell: pwsh
+        env:
+          INPUT_CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           $ErrorActionPreference='Stop'
+          if ($env:INPUT_OPERATION -ceq 'qualification') {
+            if ($env:GITHUB_ACTOR -cne 'amdecian' -or $env:GITHUB_TRIGGERING_ACTOR -cne 'amdecian' -or
+                $env:INPUT_CONFIRMATION -cne 'QUALIFY PUBLICATION UPLOAD') {
+              throw 'Disposable qualification requires the owner and explicit qualification confirmation.'
+            }
+          } elseif ($env:INPUT_OPERATION -cne 'publish') { throw 'Unknown public import operation.' }
           if ('${{ runner.environment }}' -cne 'self-hosted' -or
               $env:RUNNER_OS -cne 'Windows' -or $env:RUNNER_ARCH -cne 'X64' -or
               $env:COMPUTERNAME -cne 'DESKTOP-EPCJMH2' -or
@@ -86,6 +102,11 @@ jobs:
           TMP: ${{ runner.temp }}
         run: |
           $ErrorActionPreference='Stop'
+          if ($env:INPUT_OPERATION -ceq 'qualification') {
+            & $env:RELEASE_PYTHON .\scripts\update_release_qualification.py
+            if ($LASTEXITCODE -ne 0) { throw 'Disposable upload qualification stopped; preserve the exact draft and evidence.' }
+            return
+          }
           if ($env:INPUT_CONFIRMATION -cne 'PUBLISH REAL DEV UPDATE') { throw 'Explicit publication confirmation required.' }
           $env:RELEASE_STAGING_ROOT = & .\scripts\Initialize-UpdateReleaseStaging.ps1
           & $env:RELEASE_PYTHON .\scripts\update_release_import.py
