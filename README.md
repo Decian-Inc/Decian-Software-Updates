@@ -1,14 +1,16 @@
-<img src="docs/branding/decian-updates.png" alt="Decian Updates mark" width="112">
+<p align="center">
+  <img src="docs/branding/orbital-distribution-banner.jpg" alt="Decian Software Updates over an emerald Earth horizon with two orbital transmission arcs" width="100%">
+</p>
 
 # Decian Software Updates
 
-Public, cryptographically protected software update distribution for Decian products.
+Public distribution for signed update metadata and encrypted Decian release packages.
 
 | Resource | What it covers |
 | --- | --- |
-| [Public catalog](catalog.json) | The signed catalog entry point for the protocol demonstration. |
-| [Update distribution overview](docs/UPDATE-DISTRIBUTION-OVERVIEW.md) | Catalog layout, trust assumptions, verification and update access. |
-| [Release import](docs/REAL-UPDATE-IMPORT.md) | How reviewed encrypted releases enter the public feed. |
+| [Public Catalog (Protocol Demo)](catalog.json) | The signed catalog entry point for the protocol demonstration. |
+| [Distribution Overview](docs/UPDATE-DISTRIBUTION-OVERVIEW.md) | Catalog layout, trust assumptions, verification and update access. |
+| [Release Import](docs/REAL-UPDATE-IMPORT.md) | How reviewed encrypted releases enter the public feed. |
 | [Grant import](UPDATE-GRANT-IMPORT.md) and [license alignment](docs/LICENSE-ALIGNED-GRANTS.md) | How signed installation-specific update access is published. |
 
 ## Update Protocol v1 proof of concept
