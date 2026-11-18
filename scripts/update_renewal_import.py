@@ -25,8 +25,7 @@ def verify_pair(files, pin, now, product=common.SECURE_ACCESS):
     require(re.fullmatch(r'[a-f0-9]{32}',grant['updateHandle']) is not None and
             re.fullmatch(r'rsa-sha256:[a-f0-9]{32}',grant['installationKeyId']) is not None, 'Invalid renewal identity')
     start,end=(common.timestamp(grant[k]) for k in ('notBeforeUtc','expiresUtc'))
-    max_days = 7 if product == common.INVESTIGATOR else 365
-    require(start <= now < end <= start + dt.timedelta(days=max_days), 'Renewal expired or future')
+    require(start <= now < end <= start + dt.timedelta(days=365), 'Renewal expired, future or over 365 days')
     require(set(sig)=={'schemaVersion','algorithm','keyId','signatureBase64'} and
             type(sig['schemaVersion']) is int and sig['schemaVersion']==1 and sig['algorithm']=='RSA-PSS-SHA256', 'Invalid renewal signature envelope')
     der=common.openssl('pkey','-pubin','-in',pin,'-outform','DER')

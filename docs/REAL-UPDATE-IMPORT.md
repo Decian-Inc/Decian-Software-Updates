@@ -14,7 +14,7 @@ This code has not yet been production-dispatched. A successful public import mak
 
 ## 365II internal dev feed
 
-Choose `m365-incident-investigator` for initial grant import, same-key renewal, and the reviewed real-release import. The signed grant must identify 365II on `dev` with a validity period of at most seven days. The public import continues to accept the original Secure Access transfers through the default `secure-access` scope.
+Choose `m365-incident-investigator` for initial grant import, same-key renewal, and the reviewed real-release import. The signed grant must identify 365II on `dev`. Initial grants last up to seven days. For sequence 2 and later, License Control limits a reviewed same-key renewal to the remaining machine entitlement and at most 365 days. The public importer verifies the signed interval and the exact predecessor. Release offers keep their separate seven-day limit. Upgrade the enrolled analyst to a renewal-capable signed bridge before publishing a long-lived successor. The public import continues to accept the original Secure Access transfers through the default `secure-access` scope.
 
 For a 365II release, place only `package.dcu` under `m365-incident-investigator-dev-N` in the protected staging directory. The authority handoff signs the reviewed Setup or patch digest, ciphertext digest and size, recipient, version, and reviewed public head. The encrypted asset is at most 256 MiB. The asset tag is `m365-incident-investigator-dev-N`. The signed offer names `<version>.dcu` for Setup or `<version>.patch.dcu` for an installed-files patch. Both use a three-component numeric version.
 
