@@ -32,6 +32,11 @@ class MemoryAssets:
     def create(self, tag, commit, body):
         self.release = {'id': 1, 'tag_name': tag, 'target_commitish': commit, 'name': tag,
                         'body': body, 'draft': True, 'prerelease': True, 'assets': []}
+        return dict(self.release)
+
+    def read_release(self, release_id):
+        assert release_id == self.release['id']
+        return dict(self.release)
 
     def upload(self, release_id, path, size, name):
         self.package = path.read_bytes()
@@ -168,6 +173,38 @@ class InvestigatorReleaseTests(unittest.TestCase):
         self.assertEqual(self.repo.files[other], b'preserve Secure Access')
         self.assertEqual(assets.release['tag_name'], self.product + '-dev-1')
 
+    def test_new_draft_missing_from_release_list_uses_returned_id_to_completion(self):
+        class LaggingListAssets(MemoryAssets):
+            discoveries = 0
+            creates = 0
+            def lookup(self, tag):
+                self.discoveries += 1
+                if self.release is not None:
+                    raise AssertionError('A known release must be read by ID, not relisted')
+                return None
+            def create(self, *args):
+                self.creates += 1
+                return super().create(*args)
+        assets = LaggingListAssets(policy.package_url(self.product, 1, '0.8.4.dcu'))
+        self.publish(self.handoff(self.offer(1, '0.8.4'), 1), assets)
+        self.assertEqual((assets.discoveries, assets.creates), (1, 1))
+        self.assertFalse(assets.release['draft'])
+        self.assertEqual(assets.release['assets'][0]['id'], 2)
+        self.assertEqual(len(self.repo.writes), 1)
+
+    def test_lost_create_reply_discovers_same_draft_without_second_create(self):
+        class LostCreateAssets(MemoryAssets):
+            creates = 0
+            def create(self, *args):
+                self.creates += 1
+                super().create(*args)
+                raise OSError('Fixture reply lost after server created the draft')
+        assets = LostCreateAssets(policy.package_url(self.product, 1, '0.8.4.dcu'))
+        self.publish(self.handoff(self.offer(1, '0.8.4'), 1), assets)
+        self.assertEqual(assets.creates, 1)
+        self.assertFalse(assets.release['draft'])
+        self.assertEqual(len(self.repo.writes), 1)
+
     def test_ambiguous_upload_is_reconciled_without_a_second_post(self):
         from update_release_cli import UploadFailure
         class LostReplyAssets(MemoryAssets):
@@ -206,6 +243,7 @@ class InvestigatorReleaseTests(unittest.TestCase):
             def create(self, tag, commit, body):
                 super().create(tag, commit, body)
                 self.release['assets'] = [{'id': 99, 'name': 'conflict.dcu', 'size': 60, 'state': 'uploaded'}]
+                return dict(self.release)
             def upload(self, *args):
                 self.uploads += 1
                 raise AssertionError('Must preserve conflicting asset')

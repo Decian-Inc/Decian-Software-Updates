@@ -35,11 +35,20 @@ def ensure_asset(assets, delivery, ciphertext, public_head):
     product_name = '365II' if delivery.product == INVESTIGATOR else 'Secure Access'
     body = f'Decian encrypted {product_name} dev package\nSHA256: {delivery.package_sha256}'
     release = assets.lookup(tag)
+    created_id = None
     if release is None:
-        try: assets.create(tag, public_head, body)
-        except (RuntimeError, OSError): pass  # Confirm any lost reply by exact readback below.
-        release = assets.lookup(tag)
-    validate_release(release, tag, public_head, body)
+        try:
+            created = assets.create(tag, public_head, body)
+        except (RuntimeError, OSError):
+            # Without a returned ID, discover a possible completed write once.
+            # Never repeat the create POST after an ambiguous reply.
+            release = assets.lookup(tag)
+        else:
+            require(isinstance(created, dict) and type(created.get('id')) is int and created['id'] > 0,
+                    'Created release ID was not confirmed; preserve the original draft')
+            created_id = created['id']
+            release = assets.read_release(created_id)
+    validate_release(release, tag, public_head, body, created_id)
     assets.check_tag(tag, public_head, allow_missing=release['draft'])
     if not release['assets']:
         require(release['draft'], 'Published release is missing its original asset')
@@ -49,7 +58,7 @@ def ensure_asset(assets, delivery, ciphertext, public_head):
             # A lost reply can follow a completed write. Reconcile the original
             # immutable draft before reporting any error; never repeat the POST.
             upload_failure = error
-        reread = assets.lookup(tag)
+        reread = assets.read_release(release['id'])
         validate_release(reread, tag, public_head, body, release['id'])
         require(reread['draft'] == release['draft'], 'Release changed during upload')
         release = reread
@@ -66,7 +75,7 @@ def ensure_asset(assets, delivery, ciphertext, public_head):
         if release['draft']:
             try: assets.publish(release['id'])
             except (RuntimeError, OSError): pass
-        final = assets.lookup(tag)
+        final = assets.read_release(release['id'])
         validate_release(final, tag, public_head, body, release['id'])
         require(final['draft'] is False and len(final['assets']) == 1, 'Publication not confirmed')
         final_asset = final['assets'][0]

@@ -50,8 +50,16 @@ class GitHubAssets:
         else: raise ValueError('Release listing exceeded bound')
         require(len(matches) <= 1, 'Conflicting release records')
         if not matches: return None
-        result = matches[0]
-        release_id = result['id']; require(type(release_id) is int and release_id > 0, 'Invalid release ID')
+        result = self.read_release(matches[0]['id'])
+        require(result.get('tag_name') == tag, 'Release changed during lookup')
+        return result
+
+    def read_release(self, release_id):
+        require(type(release_id) is int and release_id > 0, 'Invalid release ID')
+        result = self.repository.api('GET', f'/releases/{release_id}')
+        require(isinstance(result, dict) and type(result.get('id')) is int and result['id'] == release_id,
+                'Release identity changed during readback')
+        result = dict(result)
         result['assets'] = self.repository.api('GET', f'/releases/{release_id}/assets?per_page=100')
         require(isinstance(result['assets'], list) and len(result['assets']) < 100, 'Asset listing exceeded bound')
         return result

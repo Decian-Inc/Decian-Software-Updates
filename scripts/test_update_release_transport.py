@@ -46,6 +46,27 @@ class TransportTests(unittest.TestCase):
             client.create(tag, 'refs/heads/main', body)
         client.repository.api.assert_not_called()
 
+    def test_lookup_uses_fresh_exact_id_metadata_when_release_list_is_stale(self):
+        client = self.client([])
+        client.repository = Mock()
+        tag = 'secure-access-dev-5'
+        stale = {'id': 42, 'tag_name': tag, 'draft': True, 'body': 'stale'}
+        fresh = dict(stale, draft=False, body='fresh')
+        client.repository.api.side_effect = [[stale], fresh, []]
+        self.assertEqual(client.lookup(tag), dict(fresh, assets=[]))
+        self.assertEqual(client.repository.api.call_args_list, [
+            call('GET', '/releases?per_page=100&page=1'),
+            call('GET', '/releases/42'),
+            call('GET', '/releases/42/assets?per_page=100')])
+
+    def test_readback_rejects_a_changed_release_id_before_using_assets(self):
+        client = self.client([])
+        client.repository = Mock()
+        client.repository.api.return_value = {'id': 43}
+        with self.assertRaisesRegex(ValueError, 'identity changed'):
+            client.read_release(42)
+        client.repository.api.assert_called_once_with('GET', '/releases/42')
+
     def test_redirect_strips_credentials_and_streams_exact_bytes(self):
         redirect=urllib.error.HTTPError('https://api.github.com/x',302,'redirect',{'Location':'https://release-assets.githubusercontent.com/path?signature=fixture'},None)
         client=self.client([redirect,Response(bytes(40),{'Content-Length':'40'})])
