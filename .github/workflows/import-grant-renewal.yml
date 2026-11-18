@@ -25,7 +25,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   import:
-    if: github.ref == 'refs/heads/main' && github.repository == 'Decian-Inc/Decian-Software-Updates'
+    if: github.ref == 'refs/heads/main' && github.repository == 'Decian-Inc/Decian-Software-Updates' && inputs.product_id == 'secure-access'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -39,3 +39,8 @@ jobs:
           INPUT_BUNDLE: ${{ inputs.bundle_base64 }}
           INPUT_CONFIRMATION: ${{ inputs.confirmation }}
         run: python3 -I scripts/update_renewal_import.py
+  investigator:
+    if: github.ref == 'refs/heads/main' && github.repository == 'Decian-Inc/Decian-Software-Updates' && inputs.product_id == 'm365-incident-investigator'
+    uses: ./.github/workflows/import-365ii-grant-device.yml
+    with:
+      operation: renewal
