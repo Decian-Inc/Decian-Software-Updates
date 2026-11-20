@@ -11,7 +11,7 @@ import update_release_policy as policy
 import update_renewal_import as renewal
 from update_release_metadata import verify_metadata
 from update_release_plan import apply_plan, plan
-from update_release_source import REVIEWED, reviewed_for
+from update_release_source import REVIEWED, REVIEWED_BY_SEQUENCE, reviewed_for
 
 
 def digest(data):
@@ -394,15 +394,52 @@ class InvestigatorReleaseTests(unittest.TestCase):
 
     def test_secure_access_current_grant_accepts_each_reviewed_source(self):
         grant, signature = self.sign(dict(self.f.grant, productId=common.SECURE_ACCESS, sequence=3))
-        for sequence, version in ((2, '0.4.19'), (3, '0.4.20'), (4, '0.4.26'), (5, '0.4.27'), (6, '0.4.29')):
+        for sequence in sorted(REVIEWED_BY_SEQUENCE):
             with self.subTest(sequence=sequence):
                 reviewed = reviewed_for(sequence)
+                version = reviewed.version
                 files = self.offer(sequence, version, scope=common.SECURE_ACCESS)
                 delivery = verify_metadata(files, self.f.pin, self.f.now, grant, signature)
                 self.assertEqual((delivery.sequence, delivery.version), (sequence, version))
                 self.assertEqual(delivery.asset_name, version + '.dcu')
                 self.assertEqual(delivery.package_size, reviewed.bundle_size + policy.PACKAGE_HEADER_SIZE)
                 policy.validate_public_url(delivery.package_path)
+                for changes in ({'plaintextSha256': '0' * 64}, {'packageSize': reviewed.bundle_size}):
+                    with self.subTest(changes=changes), self.assertRaises(ValueError):
+                        verify_metadata(self.offer(sequence, version, scope=common.SECURE_ACCESS, **changes),
+                                        self.f.pin, self.f.now, grant, signature)
+
+    def test_secure_access_two_successive_plans_keep_the_same_grant_and_key(self):
+        grant, signature = self.sign(dict(self.f.grant, productId=common.SECURE_ACCESS, sequence=3))
+        grant_path = self.grant_prefix + '.json'
+        signature_path = self.grant_prefix + '.sig.json'
+        self.repo.files.update({grant_path: grant, signature_path: signature})
+        recent = sorted(REVIEWED_BY_SEQUENCE)[-3:]
+        self.assertEqual(len(recent), 3)
+        previous_files = self.offer(recent[0], reviewed_for(recent[0]).version, scope=common.SECURE_ACCESS)
+        self.repo.files.update(previous_files)
+        active = policy.offer_path(common.SECURE_ACCESS)
+        for sequence in recent[1:]:
+            with self.subTest(sequence=sequence):
+                files = self.offer(sequence, reviewed_for(sequence).version, scope=common.SECURE_ACCESS)
+                snapshot = self.repo.snapshot()
+                previous = (digest(self.repo.files[active + '.json']),
+                            digest(self.repo.files[active + '.sig.json']))
+                publication = plan(self.repo, files, self.f.pin, self.f.now, self.handle,
+                                   snapshot['sha'], *previous, product=common.SECURE_ACCESS)
+                self.assertFalse(publication.already_published)
+                apply_plan(self.repo, publication)
+                retry = plan(self.repo, files, self.f.pin, self.f.now, self.handle,
+                             snapshot['sha'], *previous, product=common.SECURE_ACCESS)
+                self.assertTrue(retry.already_published)
+                apply_plan(self.repo, retry)
+                self.assertEqual(self.repo.files[grant_path], grant)
+                self.assertEqual(self.repo.files[signature_path], signature)
+                delivery = verify_metadata(files, self.f.pin, self.f.now, grant, signature)
+                self.assertEqual((delivery.sequence, delivery.handle), (sequence, self.handle))
+        self.assertEqual(len(self.repo.writes), 2)
+        self.assertTrue(all(grant_path not in write and signature_path not in write
+                            for write in self.repo.writes))
 
     def test_secure_access_dev5_requires_its_exact_version_source_and_sequence(self):
         grant, signature = self.sign(dict(self.f.grant, productId=common.SECURE_ACCESS, sequence=3))
@@ -417,7 +454,7 @@ class InvestigatorReleaseTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             verify_metadata(self.offer(5, previous.version, scope=common.SECURE_ACCESS),
                             self.f.pin, self.f.now, grant, signature)
-        for sequence in (True, 7):
+        for sequence in (True, max(REVIEWED_BY_SEQUENCE) + 1):
             with self.subTest(sequence=sequence), self.assertRaisesRegex(ValueError, 'no reviewed source'):
                 reviewed_for(sequence)
 
@@ -455,8 +492,9 @@ class InvestigatorReleaseTests(unittest.TestCase):
                                 self.f.pin, self.f.now, grant, signature)
 
     def test_secure_access_public_url_binds_sequence_to_reviewed_version(self):
-        for sequence in (2, 3, 4, 5, 6):
-            for version in ('0.4.19', '0.4.20', '0.4.21', '0.4.26', '0.4.27', '0.4.28', '0.4.29'):
+        versions = {reviewed_for(sequence).version for sequence in REVIEWED_BY_SEQUENCE} | {'0.4.21', '0.4.28'}
+        for sequence in sorted(REVIEWED_BY_SEQUENCE):
+            for version in sorted(versions):
                 url = policy.package_url(common.SECURE_ACCESS, sequence, version + '.dcu')
                 with self.subTest(sequence=sequence, version=version):
                     if version == reviewed_for(sequence).version:
